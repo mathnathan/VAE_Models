@@ -10,11 +10,11 @@ import tensorflow as tf
 class VAE():
 
 
-    def __init__(self, input_dim, encoder, latency_dim, decoder, hyperParams):
+    def __init__(self, input_dim, encoder, latent_dim, decoder, hyperParams):
 
         self.input_dim = input_dim
         self.encoder = encoder
-        self.latency_dim = latency_dim
+        self.latent_dim = latent_dim
         self.decoder = decoder
         self.batch_size = hyperParams['batch_size'] # add error checking
         self.learning_rate = hyperParams['learning_rate'] # Add error checking
@@ -55,16 +55,16 @@ class VAE():
         enc_output_dim = self.encoder.get_output_dim()
 
         # Now add the weights/bias for the mean and var of the latency dim
-        z_mean_weight_val = self.encoder.xavier_init(enc_output_dim, self.latency_dim)
+        z_mean_weight_val = self.encoder.xavier_init(enc_output_dim, self.latent_dim)
         z_mean_weight = tf.Variable(initial_value=z_mean_weight_val, dtype=tf.float32)
-        z_mean_bias_val = np.zeros((1,self.latency_dim))
+        z_mean_bias_val = np.zeros((1,self.latent_dim))
         z_mean_bias = tf.Variable(initial_value=z_mean_bias_val, dtype=tf.float32)
 
         self.z_mean = tf.nn.elu(encoder_output @ z_mean_weight + z_mean_bias)
 
-        z_log_var_weight_val = self.encoder.xavier_init(enc_output_dim, self.latency_dim)
+        z_log_var_weight_val = self.encoder.xavier_init(enc_output_dim, self.latent_dim)
         z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val, dtype=tf.float32)
-        z_log_var_bias_val = np.zeros((1,self.latency_dim))
+        z_log_var_bias_val = np.zeros((1,self.latent_dim))
         z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val, dtype=tf.float32)
 
         self.z_log_var = tf.nn.elu(encoder_output @ z_log_var_weight + z_log_var_bias)
@@ -74,7 +74,7 @@ class VAE():
         self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps
 
         # Construct the decoder network and get its output
-        decoder_output = self.decoder.build_graph(self.z, self.latency_dim)
+        decoder_output = self.decoder.build_graph(self.z, self.latent_dim)
         #dec_output_dim = decoder_output.shape.as_list()[1]
         dec_output_dim = self.decoder.get_output_dim()
 
@@ -100,19 +100,21 @@ class VAE():
     def __create_loss(self):
 
         if self.reconstruct_cost == "bernoulli":
-            self.reconstruct_loss = \
+            reconstruct_loss = \
                 -tf.reduce_sum(self.network_input * tf.log(1e-10 + self.x_mean)
                                + (1-self.network_input) * tf.log(1e-10 + 1 -
                                    self.x_mean),1)
         elif self.reconstruct_cost == "gaussian":
-            self.reconstruct_loss = tf.reduce_sum(tf.pow(tf.subtract(self.network_input,
+            reconstruct_loss = tf.reduce_sum(tf.pow(tf.subtract(self.network_input,
                 self.x_mean), 2))
 
-        self.regularizer = -0.5 * tf.reduce_sum(1 + self.z_log_var
+        regularizer = -0.5 * tf.reduce_sum(1 + self.z_log_var
                                            - tf.square(self.z_mean)
                                            - tf.exp(self.z_log_var), 1)
 
-        self.cost = tf.reduce_mean(self.reconstruct_loss + self.regularizer)   # average over batch
+        self.reconstruct_loss = tf.reduce_mean(reconstruct_loss)
+        self.regularizer = tf.reduce_mean(regularizer)
+        self.cost = tf.reduce_mean(reconstruct_loss + regularizer)   # average over batch
         # User specifies optimizer in the hyperParams argument to constructor
         self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
@@ -123,13 +125,15 @@ class VAE():
             return self.sess.run(self.x_mean, feed_dict={self.network_input: network_input})
         elif self.reconstruct_cost == 'gaussian':
             input_dict = {self.network_input: network_input}
-            mean, sig = self.sess.run((self.x_mean, self.x_sigma), feed_dict=input_dict)
+            targets = (self.x_mean, self.x_sigma)
+            mean, sig = self.sess.run(targets, feed_dict=input_dict)
             eps = tf.random_normal(tf.shape(sigma), dtype=tf.float32)
             return mean + sigma * eps
 
 
     def transform(self, network_input):
 
+        input_dict={self.network_input: network_input}
         targets = (self.z_mean, self.z_log_var)
-        return self.sess.run(target, feed_dict={self.network_input: network_input})
+        return self.sess.run(targets, feed_dict=input_dict)
 
