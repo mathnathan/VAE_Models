@@ -29,9 +29,9 @@ class Neural_Network():
         self.biases = []
 
 
-    def xavier_init(self, input_size, output_size, constant=1):
-        size = constant*np.sqrt(6.0/(input_size + output_size))
-        return tf.random_uniform((fan_in, fan_out),
+    def xavier_init(self, input_size, output_size):
+        size = np.sqrt(6.0/(input_size + output_size))
+        return tf.random_uniform((input_size, output_size),
                                  minval=-size, maxval=size,
                                  dtype=tf.float32)
 

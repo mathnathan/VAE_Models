@@ -38,11 +38,11 @@ class VAE():
 
     def __call__(self, network_input):
 
-        targets = (self.cost, self.reconstruct_cost, self.regularizer, self.train_op)
+        targets = (self.cost, self.reconstruct_loss, self.regularizer, self.train_op)
         input_dict = {self.network_input: network_input}
-        cost, reconstruct_cost, regularizer, _ = self.sess.run(targets, feed_dict=input_dict)
+        cost, reconstruct_loss, regularizer, _ = self.sess.run(targets, feed_dict=input_dict)
 
-        return (cost, reconstruct_cost, regularizer)
+        return (cost, reconstruct_loss, regularizer)
 
 
     def __build_graph(self):
