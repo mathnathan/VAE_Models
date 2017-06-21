@@ -10,8 +10,8 @@ class Neural_Network():
     def __init__(self, architecture, transfer_funcs):
 
         # The below is hardly error proof. It is just a few minor checks to help
-        # debugging. Eventually it will need to be bolstered further (check
-        # architecture)
+        # with debugging. Eventually it will need to be bolstered further (check
+        # architecture too)
         if hasattr(transfer_funcs, '__iter__'): # Check to see if it is iterable
             # If it is iterable that means they put in a list or tuple (hopefully)
             # in which case they must specify an actiavation func for each layer
@@ -29,13 +29,10 @@ class Neural_Network():
         self.biases = []
 
 
-    def xavier_init(self, fan_in, fan_out, constant=1):
-        """ Xavier initialization of network weights"""
-        # https://stackoverflow.com/questions/33640581/how-to-do-xavier-initialization-on-tensorflow
-        low = -constant*np.sqrt(6.0/(fan_in + fan_out))
-        high = constant*np.sqrt(6.0/(fan_in + fan_out))
+    def xavier_init(self, input_size, output_size, constant=1):
+        size = constant*np.sqrt(6.0/(input_size + output_size))
         return tf.random_uniform((fan_in, fan_out),
-                                 minval=low, maxval=high,
+                                 minval=-size, maxval=size,
                                  dtype=tf.float32)
 
 

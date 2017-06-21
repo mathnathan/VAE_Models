@@ -35,11 +35,14 @@ class VAE():
 
         self.saver = tf.train.Saver()
 
+
     def __call__(self, network_input):
 
-        _, cost = self.sess.run((self.train_op, self.cost), feed_dict={self.network_input: network_input})
+        targets = (self.cost, self.reconstruct_cost, self.regularizer, self.train_op)
+        input_dict = {self.network_input: network_input}
+        cost, reconstruct_cost, regularizer, _ = self.sess.run(targets, feed_dict=input_dict)
 
-        return cost
+        return (cost, reconstruct_cost, regularizer)
 
 
     def __build_graph(self):
@@ -125,6 +128,8 @@ class VAE():
             return mean + sigma * eps
 
 
-    def getResponsibilities(self, x):
-        None
+    def transform(self, network_input):
+
+        targets = (self.z_mean, self.z_log_var)
+        return self.sess.run(target, feed_dict={self.network_input: network_input})
 
