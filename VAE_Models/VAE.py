@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+from IPython import embed
 
 # Requires Python 3.6+ and Tensorflow 1.1+
 
@@ -60,17 +61,17 @@ class VAE():
         z_mean_bias_val = np.zeros((1,self.latent_dim))
         z_mean_bias = tf.Variable(initial_value=z_mean_bias_val, dtype=tf.float32)
 
-        self.z_mean = tf.nn.elu(encoder_output @ z_mean_weight + z_mean_bias)
+        self.z_mean = encoder_output @ z_mean_weight + z_mean_bias
 
         z_log_var_weight_val = self.encoder.xavier_init(enc_output_dim, self.latent_dim)
         z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val, dtype=tf.float32)
         z_log_var_bias_val = np.zeros((1,self.latent_dim))
         z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val, dtype=tf.float32)
 
-        self.z_log_var = tf.nn.elu(encoder_output @ z_log_var_weight + z_log_var_bias)
+        self.z_log_var = encoder_output @ z_log_var_weight + z_log_var_bias
 
         z_shape = tf.shape(self.z_log_var)
-        eps = tf.random_normal(z_shape, dtype=tf.float32)
+        eps = tf.random_normal(z_shape, 0, 1, dtype=tf.float32)
         self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps
 
         # Construct the decoder network and get its output
@@ -79,9 +80,9 @@ class VAE():
         dec_output_dim = self.decoder.get_output_dim()
 
         # Now add the weights/bias for the mean reconstruction terms
-        x_mean_weight_val = self.encoder.xavier_init(dec_output_dim, self.input_dim)
+        x_mean_weight_val = self.decoder.xavier_init(dec_output_dim, self.input_dim)
         x_mean_weight = tf.Variable(initial_value=x_mean_weight_val, dtype=tf.float32)
-        x_mean_bias_val = np.zeros(self.input_dim)
+        x_mean_bias_val = np.zeros((1,self.input_dim))
         x_mean_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=tf.float32)
 
         # Just do Bernoulli for now. Add more functionality later
@@ -100,10 +101,10 @@ class VAE():
     def __create_loss(self):
 
         if self.reconstruct_cost == "bernoulli":
-            reconstruct_loss = \
-                -tf.reduce_sum(self.network_input * tf.log(1e-10 + self.x_mean)
-                               + (1-self.network_input) * tf.log(1e-10 + 1 -
-                                   self.x_mean),1)
+            reconstruct_loss = -tf.reduce_sum(self.network_input *
+                                tf.log(1e-10 + self.x_mean) +
+                                (1-self.network_input) *
+                                tf.log(1e-10 + 1 - self.x_mean),1)
         elif self.reconstruct_cost == "gaussian":
             reconstruct_loss = tf.reduce_sum(tf.pow(tf.subtract(self.network_input,
                 self.x_mean), 2))
@@ -136,4 +137,12 @@ class VAE():
         input_dict={self.network_input: network_input}
         targets = (self.z_mean, self.z_log_var)
         return self.sess.run(targets, feed_dict=input_dict)
+
+    def generate(self, z=None):
+
+        if z is None:
+            z = np.random_normal((self.batch_size, self.latent_dim))
+            return self.sess.run(self.x_mean, feed_dict={self.z: z})
+        else:
+            return self.sess.run(self.x_mean, feed_dict={self.z: z})
 
