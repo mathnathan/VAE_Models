@@ -45,6 +45,8 @@ class VaDE():
         targets = (self.cost, self.reconstruct_loss, self.regularizer, self.train_op)
         input_dict = {self.network_input: network_input}
         cost, reconstruct_loss, regularizer, _ = self.sess.run(targets, feed_dict=input_dict)
+        # Normalize the modes after optimization step
+        self.sess.run(self.normalize_pis_op)
 
         return (cost, reconstruct_loss, regularizer)
 
@@ -60,8 +62,11 @@ class VaDE():
         pi_init = np.ones(self.num_clusters)/self.num_clusters
         self.gmm_pi = tf.Variable(pi_init, dtype=tf.float32)
 
-        mu_init = np.zeros((self.latent_dim, self.num_clusters))
-        self.gmm_mu = tf.Variable(mu_init, dtype=tf.float32)
+        means = np.zeros(self.latent_dim)
+        cov = np.eye(self.latent_dim)
+        mu_init = np.random.multivariate_normal(means, cov, self.num_clusters)
+        #mu_init = np.zeros((self.latent_dim,self.num_clusters))
+        self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
 
         log_var_init = np.ones((self.latent_dim, self.num_clusters))
         self.gmm_log_var = tf.Variable(log_var_init, dtype=tf.float32)
@@ -178,6 +183,9 @@ class VaDE():
         # User specifies optimizer in the hyperParams argument to constructor
         self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
+        # Ensure modes are normalized
+        self.normalize_pis_op = tf.assign(self.gmm_pi,self.gmm_pi/tf.reduce_sum(self.gmm_pi))
+
 
     def reconstruct(self, network_input):
 
@@ -197,7 +205,6 @@ class VaDE():
         targets = (self.z_mean, self.z_log_var)
         means, log_vars = self.sess.run(targets, feed_dict=input_dict)
         return (means, np.sqrt(np.exp(log_vars)))
-
 
 
     def generate(self, z=None):
