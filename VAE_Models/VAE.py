@@ -101,21 +101,16 @@ class VAE():
     def __create_loss(self):
 
         if self.reconstruct_cost == "bernoulli":
-            reconstruct_loss = -tf.reduce_sum(self.network_input *
-                                tf.log(1e-10 + self.x_mean) +
-                                (1-self.network_input) *
-                                tf.log(1e-10 + 1 - self.x_mean),1)
+            self.reconstruct_loss = tf.reduce_mean(tf.reduce_sum(
+                    self.network_input * tf.log(1e-10 + self.x_mean) +
+                    (1-self.network_input) * tf.log(1e-10 + 1 - self.x_mean),1))
         elif self.reconstruct_cost == "gaussian":
-            reconstruct_loss = tf.reduce_sum(tf.pow(tf.subtract(self.network_input,
-                self.x_mean), 2))
+            reconstruct_loss = tf.reduce_sum(tf.square(self.network_input-self.x_mean))
 
-        regularizer = -0.5 * tf.reduce_sum(1 + self.z_log_var
-                                           - tf.square(self.z_mean)
-                                           - tf.exp(self.z_log_var), 1)
+        self.regularizer = tf.reduce_mean(-0.5 * tf.reduce_sum(1 + self.z_log_var -
+                    tf.square(self.z_mean) - tf.exp(self.z_log_var), axis=1))
+        self.cost = -(self.reconstruct_loss - self.regularizer)
 
-        self.reconstruct_loss = tf.reduce_mean(reconstruct_loss)
-        self.regularizer = tf.reduce_mean(regularizer)
-        self.cost = tf.reduce_mean(reconstruct_loss + regularizer)   # average over batch
         # User specifies optimizer in the hyperParams argument to constructor
         self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
@@ -136,7 +131,8 @@ class VAE():
 
         input_dict={self.network_input: network_input}
         targets = (self.z_mean, self.z_log_var)
-        return self.sess.run(targets, feed_dict=input_dict)
+        means, log_vars = self.sess.run(targets, feed_dict=input_dict)
+        return (means, np.sqrt(np.exp(log_vars)))
 
     def generate(self, z=None):
 

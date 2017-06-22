@@ -4,7 +4,9 @@ import tensorflow as tf
 from tqdm import tqdm
 from IPython import embed
 
+# Choose standard VAE or VaDE
 from VAE_Models.VaDE import VaDE as model
+#from VAE_Models.VAE import VAE as model
 from VAE_Models.architectures import DNN
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
@@ -37,13 +39,16 @@ filename = 'figures'
 
 #for itr in tqdm(range(epochs*itrs_per_epoch)):
 nx = ny = 20
+winRange = 10
 canvas = np.empty((winSize*ny,winSize*nx))
 numPlots = 0
-x_values = np.linspace(-8, 8, nx)
-y_values = np.linspace(-8, 8, ny)
+x_values = np.linspace(-winRange, winRange, nx)
+y_values = np.linspace(-winRange, winRange, ny)
 interval = 1000 # save fig of latency space every 10 batches
 
 img_cost = 0.0
+test_data, test_labels = mnist.test.next_batch(1000)
+test_labels = [np.where(arr == 1) for arr in test_labels]
 for itr in range(epochs*itrs_per_epoch):
     train_data, train_labels = mnist.train.next_batch(hyperParams['batch_size'])
     tot_cost, reconstr_loss, KL_loss = network(train_data)
@@ -55,10 +60,14 @@ for itr in range(epochs*itrs_per_epoch):
         c = cost/(updates*hyperParams['batch_size'])
         rl = reconstruct_cost/(updates*hyperParams['batch_size'])
         kl = kl_cost/(updates*hyperParams['batch_size'])
-        print("recon_loss=%f, KL_loss=%f, cost=%f\n" % (rl,kl,c))
+        print("\nrecon_loss=%f, KL_loss=%f, cost=%f" % (rl,kl,c))
         cost = 0
         reconstruct_cost = 0
         kl_cost = 0
+        if hasattr(network, 'get_gmm_params'):
+            pi, mean, std = network.get_gmm_params()
+            print("Modes\n", pi)
+            print("Means\n", mean)
 
     if itr%interval == 0:
         fig = plt.figure()
@@ -68,10 +77,8 @@ for itr in range(epochs*itrs_per_epoch):
         axes.set_title("%d Iterations" % (itr))
         axes2.set_title("Average Cost = %f" % (img_cost/(interval*network.batch_size)))
         img_cost = 0.
-        axes.set_xlim((-12,12))
-        axes.set_ylim((-12,12))
-        test_data, test_labels = mnist.test.next_batch(10000)
-        test_labels = [np.where(arr == 1) for arr in test_labels]
+        axes.set_xlim((-winRange,winRange))
+        axes.set_ylim((-winRange,winRange))
         means, stds = network.transform(test_data)
         latent_xs = means + stds*np.random.normal(size=stds.shape)
         axes.scatter(latent_xs[:,0], latent_xs[:,1], edgecolor='k', c=test_labels)

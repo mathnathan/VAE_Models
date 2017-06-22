@@ -79,14 +79,14 @@ class VaDE():
         z_mean_bias_val = np.zeros((1,self.latent_dim))
         z_mean_bias = tf.Variable(initial_value=z_mean_bias_val, dtype=tf.float32)
 
-        self.z_mean = tf.nn.elu(encoder_output @ z_mean_weight + z_mean_bias)
+        self.z_mean = encoder_output @ z_mean_weight + z_mean_bias
 
         z_log_var_weight_val = self.encoder.xavier_init(enc_output_dim, self.latent_dim)
         z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val, dtype=tf.float32)
         z_log_var_bias_val = np.zeros((1,self.latent_dim))
         z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val, dtype=tf.float32)
 
-        self.z_log_var = tf.nn.elu(encoder_output @ z_log_var_weight + z_log_var_bias)
+        self.z_log_var = encoder_output @ z_log_var_weight + z_log_var_bias
 
         z_shape = tf.shape(self.z_log_var)
         eps = tf.random_normal(z_shape, dtype=tf.float32)
@@ -98,9 +98,9 @@ class VaDE():
         dec_output_dim = self.decoder.get_output_dim()
 
         # Now add the weights/bias for the mean reconstruction terms
-        x_mean_weight_val = self.encoder.xavier_init(dec_output_dim, self.input_dim)
+        x_mean_weight_val = self.decoder.xavier_init(dec_output_dim, self.input_dim)
         x_mean_weight = tf.Variable(initial_value=x_mean_weight_val, dtype=tf.float32)
-        x_mean_bias_val = np.zeros(self.input_dim)
+        x_mean_bias_val = np.zeros((1,self.input_dim))
         x_mean_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=tf.float32)
 
         # Just do Bernoulli for now. Add more functionality later
@@ -120,54 +120,60 @@ class VaDE():
 
         # Reshape the GMM tensors in a frustratingly convoluted way to
         # be able to vectorize the computation of p(z|x) = E[p(c|z)]
-        gmm_pi = tf.reshape(self.gmm_pi, (1,1,self.num_clusters))
+        gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
         gmm_mu = tf.reshape(tf.tile(self.gmm_mu, [self.batch_size,1]),
                 (self.batch_size,self.latent_dim,self.num_clusters))
         gmm_log_var = tf.reshape(tf.tile(self.gmm_log_var, [self.batch_size,1]),
                 (self.batch_size,self.latent_dim,self.num_clusters))
         z = tf.reshape(self.z, (self.batch_size, self.latent_dim, 1))
 
-        # First calculate the numerator p(c,z) = p(z|c)p(c) (vectorized)
-        p_c_z = tf.exp(tf.reduce_sum(tf.log(gmm_pi) - \
-            0.5*tf.log(2*np.pi*gmm_log_var) - tf.pow(z-gmm_mu,2)/(2*gmm_log_var),
-            axis=1)) + 1e-10
+        # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
+        # resulting shape = (batch_size, num_clusters)
+        p_c_z = tf.exp(tf.log(gmm_pi) - 0.5*(tf.log(2*np.pi) +
+                tf.reduce_sum(gmm_log_var + tf.square(z-gmm_mu) /
+                tf.exp(gmm_log_var), axis=1))) + 1e-10
 
         # Next we sum over the clusters making the marginal probability p(z)
         marginal = tf.reduce_sum(p_c_z, axis=1, keep_dims=True)
 
         # Finally we calculate the resulting posterior p(c|z), in GMM clustering
         # literature this is called the 'responsibility' and is denoted by a
-        # gamma
+        # gamma - shape = (batch_size, num_clusters)
         gamma = p_c_z / marginal
 
         if self.reconstruct_cost == "bernoulli":
             # log p(x|z) - shape=(batchsize)
-            reconstruct_loss = \
-                -tf.reduce_sum(self.network_input * tf.log(1e-10 + self.x_mean)
+            p_x_z = tf.reduce_sum(self.network_input * tf.log(1e-10 + self.x_mean)
                                + (1-self.network_input) * tf.log(1e-10 + 1 -
-                                   self.x_mean),1) # shape=(batchsize)
+                                   self.x_mean), axis=1)
         elif self.reconstruct_cost == "gaussian":
-            self.reconstruct_loss = tf.reduce_sum(tf.pow(tf.subtract(self.network_input,
-                self.x_mean), 2))
-        # log p(z|c) - shape=(batch_size,num_clusters)
-        p_z_c = tf.reduce_sum(-0.5*tf.log(2*np.pi*gmm_log_var) -
-                tf.pow(z-gmm_mu,2)/(2*gmm_log_var), axis=1) + 1e-10
-        # log p(c) - shape=(1,num_clusters)
-        p_c = tf.reduce_sum(tf.log(gmm_pi), axis=1)
+            # log p(x|z) - shape=(batchsize)
+            p_x_z = tf.reduce_sum(tf.square(tf.subtract(self.network_input,
+                self.x_mean)), axis=1)
+
         # log q(z|x) - shape=(batch_size)
-        q_z_x = -0.5*(self.latent_dim*tf.log(2*np.pi)+
-                 tf.reduce_sum(self.z_log_var + tf.pow(self.z-self.z_mean,2)
+        q_z_x = -0.5*(self.latent_dim*tf.log(2*np.pi) +
+                 tf.reduce_sum(self.z_log_var + tf.square(self.z-self.z_mean)
                      / tf.exp(self.z_log_var), axis=1))
-        # log q(c|x) shape=(batch_size,num_clusters)
-        q_c_x = tf.log(gamma)
 
-        # This is the KL term shape = (batch_size)
-        regularizer = tf.reduce_sum(p_z_c + p_c - q_c_x, axis=1) - q_z_x
+        # log p(z|c) - shape=(batch_size,num_clusters)
+        p_z_c = -0.5*(tf.log(2*np.pi) + tf.reduce_sum(gmm_log_var +
+                tf.square(z-gmm_mu)/tf.exp(gmm_log_var),
+                axis=1)) + 1e-10
 
-        self.reconstruct_loss = tf.reduce_mean(reconstruct_loss)
-        self.regularizer = -tf.reduce_mean(regularizer)
+        # log p(c) - shape=(num_clusters)
+        p_c = tf.log(tf.reshape(gmm_pi, [self.num_clusters]))
 
-        self.cost = tf.reduce_mean(self.alpha * reconstruct_loss - regularizer)
+        # log q(c|x) = log E[p(c|z)] - shape=(num_clusters)
+        q_c_x = tf.log(tf.reduce_mean(gamma,axis=0))
+
+        self.cost = -(tf.reduce_mean(p_x_z-q_z_x) +
+                    tf.reduce_sum(tf.exp(q_c_x) *
+                    (tf.reduce_mean(p_z_c,axis=0) +
+                    p_c - q_c_x)))
+
+        self.reconstruct_loss = tf.reduce_mean(p_x_z)
+        self.regularizer = self.cost - self.reconstruct_loss
 
         # User specifies optimizer in the hyperParams argument to constructor
         self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
@@ -187,7 +193,32 @@ class VaDE():
 
     def transform(self, network_input):
 
-        input_dict = {self.network_input: network_input}
+        input_dict={self.network_input: network_input}
         targets = (self.z_mean, self.z_log_var)
-        return self.sess.run(targets, feed_dict=input_dict)
+        means, log_vars = self.sess.run(targets, feed_dict=input_dict)
+        return (means, np.sqrt(np.exp(log_vars)))
 
+
+
+    def generate(self, z=None):
+
+        if z is None:
+            targets = (self.gmm_pi, self.gmm_mu, self.gmm_log_var)
+            pis, means, log_vars = self.sess.run(targets)
+            embed()
+            sys.exit()
+            cluster = np.random.choice(range(self.num_clusters), p=pis)
+            mean = means[cluster]
+            std = np.sqrt(np.exp(log_vars[cluster]))
+            eps = np.random_normal(std.shape)
+            z = mean + std * eps
+            return self.sess.run(self.x_mean, feed_dict={self.z: z})
+        else:
+            return self.sess.run(self.x_mean, feed_dict={self.z: z})
+
+
+    def get_gmm_params(self):
+
+        targets = (self.gmm_pi, self.gmm_mu, self.gmm_log_var)
+        pis, means, log_vars = self.sess.run(targets)
+        return (pis, means, np.sqrt(np.exp(log_vars)))
