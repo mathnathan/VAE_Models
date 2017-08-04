@@ -134,6 +134,7 @@ class VAE():
         means, log_vars = self.sess.run(targets, feed_dict=input_dict)
         return (means, np.sqrt(np.exp(log_vars)))
 
+
     def generate(self, z=None):
 
         if z is None:
@@ -141,4 +142,15 @@ class VAE():
             return self.sess.run(self.x_mean, feed_dict={self.z: z})
         else:
             return self.sess.run(self.x_mean, feed_dict={self.z: z})
+
+
+    def save(self, filename):
+
+        self.saver.save(self.sess, filename)
+
+
+    def load(self, filename):
+
+        if os.path.isfile(filename):
+            self.saver.restore(self.sess, filename)
 
