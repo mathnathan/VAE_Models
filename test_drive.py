@@ -5,31 +5,39 @@ from tqdm import tqdm
 from IPython import embed
 
 # Choose standard VAE or VaDE
-from VAE_Models.VaDE import VaDE as model
-#from VAE_Models.VAE import VAE as model
+#from VAE_Models.VaDE import VaDE as model
+from VAE_Models.VAE import VAE as model
 from VAE_Models.architectures import DNN
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+
+# ---- First Estimate the GMM parameters using standard
+# ---- autoencoder and GMM clustering
+
+#from sklearn import mixture
+
+#gmm = mixture.GaussianMixture(10, covatiance_type='diag')
+
 
 # Here we define the structure of the VAE. We can pick and choose different
 # architectures to plug in as the encoder and decoder. The glueing together
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
 input_dim = 784
-encoder = DNN([500,500], tf.nn.relu)
+encoder = DNN([500,500], tf.nn.relu, scope='Encoder')
 latency_dim = 2
-decoder = DNN([500,500], tf.nn.relu)
+decoder = DNN([500,500], tf.nn.relu, scope='Decoder')
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 1e-4,
                'optimizer': tf.train.AdamOptimizer,
-               'batch_size': 100,
-               'alpha': 1.0,
-               'num_clusters': 10}
+               'batch_size': 100}
+#               'alpha': 1.0,
+#               'num_clusters': 10}
 
 network = model(input_dim, encoder, latency_dim, decoder, hyperParams)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
-epochs = 150
+epochs = 1
 updates = 1000
 cost = 0
 reconstruct_cost = 0
@@ -101,12 +109,12 @@ for itr in range(epochs*itrs_per_epoch):
 test_data, test_labels = mnist.test.next_batch(hyperParams['batch_size'])
 reconstructions = network.reconstruct(test_data)
 fig = plt.figure()
-inumFigs = 5
-for img in range():
+numFigs = 5
+for img in range(numFigs):
     axes = fig.add_subplot(numFigs,2,2*img+1)
     axes.imshow(test_data[img].reshape(28,28))
     axes = fig.add_subplot(numFigs,2,2*img+2)
     axes.imshow(reconstructions[img].reshape(28,28))
 
 #plt.tight_layout()
-    plt.show()
+plt.show()

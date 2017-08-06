@@ -5,13 +5,15 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 from IPython import embed
+import os, sys
 
 # Requires Python 3.6+ and Tensorflow 1.1+
 
 class VAE():
 
 
-    def __init__(self, input_dim, encoder, latent_dim, decoder, hyperParams):
+    def __init__(self, input_dim, encoder, latent_dim, decoder, hyperParams,
+            log_dir=None):
 
         self.input_dim = input_dim
         self.encoder = encoder
@@ -30,11 +32,17 @@ class VAE():
 
         # Launch the session
         config = tf.ConfigProto()
+        # Allow for other users on this GPU while training
         config.gpu_options.allow_growth=True
         self.sess = tf.InteractiveSession(config=config)
         self.sess.run(tf.global_variables_initializer())
 
+        # Use this to create internal saving and loading functionality
         self.saver = tf.train.Saver()
+        # Store logs here. Checkpoints, models, tensorboard data
+        if log_dir is None:
+            log_dir = os.path.join(os.getcwd(), 'log')
+        self.writer = tf.summary.FileWriter(log_dir, graph=self.sess.graph)
 
 
     def __call__(self, network_input):
