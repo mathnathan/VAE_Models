@@ -7,27 +7,27 @@ class Neural_Network():
        abstract base classes with 'from abc import ABCMeta')"""
 
 
-    def __init__(self, architecture, scope):
+    def __init__(self, architecture):
 
         self.architecture = architecture
-        self.scope = scope
         self.weights = []
         self.biases = []
 
 
     def xavier_init(self, input_size, output_size):
-        size = np.sqrt(6.0/(input_size + output_size))
-        return tf.random_uniform((input_size, output_size),
-                                 minval=-size, maxval=size,
-                                 dtype=tf.float32)
+        with tf.name_scope('Xavier_Init'):
+            size = np.sqrt(6.0/(input_size + output_size))
+            return tf.random_uniform((input_size, output_size),
+                                     minval=-size, maxval=size,
+                                     dtype=tf.float32)
 
 
 class DNN(Neural_Network):
     """Deep Neural Network - Standard Multilayer Perceptron model (MLP)"""
 
 
-    def __init__(self, architecture, transfer_funcs, scope='DNN'):
-        Neural_Network.__init__(self, architecture, scope)
+    def __init__(self, architecture, transfer_funcs):
+        Neural_Network.__init__(self, architecture)
 
         # The below is hardly error proof. It is just a few minor checks to help
         # with debugging. Eventually it will need to be bolstered further (check
@@ -45,18 +45,20 @@ class DNN(Neural_Network):
 
         self.transfer_funcs = transfer_funcs
 
-    def build_graph(self, network_input, input_dim):
+    def build_graph(self, network_input, input_dim, scope='DNN'):
 
-        with tf.name_scope(self.scope):
+        with tf.name_scope(scope):
             num_prev_nodes = input_dim  # Number of nodes in the input
             # Currently I am not keeping track of the output between layers
             current_input = network_input
             for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
                 init_weight_val = self.xavier_init(num_prev_nodes, num_next_nodes)
-                weight = tf.Variable(initial_value=init_weight_val, dtype=tf.float32)
+                weight = tf.Variable(initial_value=init_weight_val,
+                        dtype=tf.float32, name='Weight')
                 self.weights.append(weight)
                 init_bias_val = np.zeros((1,num_next_nodes))
-                bias = tf.Variable(initial_value=init_bias_val, dtype=tf.float32)
+                bias = tf.Variable(initial_value=init_bias_val,
+                        dtype=tf.float32, name='Bias')
                 self.biases.append(bias)
                 num_prev_nodes = num_next_nodes
                 current_input = func(current_input @ weight + bias)

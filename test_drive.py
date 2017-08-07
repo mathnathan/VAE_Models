@@ -24,9 +24,9 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
 input_dim = 784
-encoder = DNN([500,500], tf.nn.relu, scope='Encoder')
+encoder = DNN([500,500], tf.nn.elu)
 latency_dim = 2
-decoder = DNN([500,500], tf.nn.relu, scope='Decoder')
+decoder = DNN([500,500], tf.nn.elu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 1e-4,
                'optimizer': tf.train.AdamOptimizer,
