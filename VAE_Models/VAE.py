@@ -5,6 +5,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 from IPython import embed
+import matplotlib.pyplot as plt
+from tensorflow.contrib.tensorboard.plugins import projector
 import os, sys
 
 # Requires Python 3.6+ and Tensorflow 1.1+
@@ -28,7 +30,8 @@ class VAE():
     def __init__(self, input_dim, encoder, latent_dim, decoder, hyperParams,
             log_dir=None):
 
-        self.call_counter = 0
+        self.CHECKPOINT_COUNTER = 0
+        self.CALL_COUNTER = 0
         self.input_dim = input_dim
         self.encoder = encoder
         self.latent_dim = latent_dim
@@ -55,30 +58,37 @@ class VAE():
         self.saver = tf.train.Saver()
         # Store logs here. Checkpoints, models, tensorboard data
         if log_dir is None:
-            log_dir = os.path.join(os.getcwd(), 'log')
+            log_dir = os.path.join(os.getcwd(), 'logs')
+        self.LOG_DIR = log_dir
 	# First start with logging the graph
-        self.graph_writer = tf.summary.FileWriter(log_dir, graph=self.sess.graph)
+        tf.summary.FileWriter(self.LOG_DIR, graph=self.sess.graph)
 	# Now the summary statistics
         self.merged_summaries = tf.summary.merge_all()
-        self.train_writer = tf.summary.FileWriter(log_dir+'/train')
+        self.summary_writer = tf.summary.FileWriter(self.LOG_DIR+'/summaries')
 
 
     def __call__(self, network_input):
+        """ Over load the parenthesis operator to act as a oneshot call for
+            passing data through the network and updating with the optimizer
+
+            network_input - (array) Input to the network. Typically of shape
+            (batch_size, [input_dimensions])
+        """
 
         input_dict = {self.network_input: network_input}
-# Log variables every 10 iterations
-        if self.call_counter % 10 == 0:
+        # Log variables every 10 iterations
+        if self.CALL_COUNTER % 10 == 0:
             targets = (self.merged_summaries, self.cost, self.reconstruct_loss,
                         self.regularizer, self.train_op)
             summary, cost, reconstruct_loss, regularizer, _ = \
                 self.sess.run(targets, feed_dict=input_dict)
-            self.train_writer.add_summary(summary, self.call_counter)
+            self.summary_writer.add_summary(summary, self.CALL_COUNTER)
         else:
             targets = (self.cost, self.reconstruct_loss, self.regularizer, self.train_op)
             cost, reconstruct_loss, regularizer, _ = \
                 self.sess.run(targets, feed_dict=input_dict)
 
-        self.call_counter += 1
+        self.CALL_COUNTER += 1
         return (cost, reconstruct_loss, regularizer)
 
 
@@ -214,3 +224,86 @@ class VAE():
                 self.saver.restore(self.sess, filename)
 
 
+    def create_embedding(self, batch, labels=None):
+        """ This will eventually be called inside some convenient training
+            routine that will be exposed to the user. This creates the logs
+            and variables necessary to visualize the latency space with the
+            embedding visualizer in tensorboard.
+
+            batch - (array) Input to the network. Typically of shape
+                    (batch_size, [input_dimensions])
+
+            labels - (array) One dimensional array containing labels.
+                     The element in the ith index of 'labels' is the
+                     associated label for ith training element in batch
+        """
+
+
+        EMBED_VAR_NAME = "Latent_Space"
+        EMBED_LOG_DIR = self.LOG_DIR
+        SPRITES_PATH =  os.path.join(self.LOG_DIR, 'sprites.png')
+        METADATA_PATH =  os.path.join(self.LOG_DIR, 'metadata.tsv')
+
+        with tf.name_scope('Create_Embedding'):
+
+
+        # ----- Create the embedding variable to be visualized -----
+            # Paths to sprites and metadata must be relative to the location of
+            # the projector config file which is determined by the line below
+            embedding_writer = tf.summary.FileWriter(EMBED_LOG_DIR)
+
+            latent_var = self.sess.run(self.z, feed_dict={self.network_input: batch})
+            embedding_var = tf.Variable(latent_var, trainable=False, name=EMBED_VAR_NAME)
+            # Initialize the newly created embedding variable
+            init_embedding_var_op = tf.variables_initializer([embedding_var])
+            self.sess.run(init_embedding_var_op)
+
+            # Create a projector configuartion object
+            config = projector.ProjectorConfig()
+            # Create an embedding
+            embedding = config.embeddings.add()
+            # This is where the name is important again. Specify
+            # which variable to embed
+            embedding.tensor_name = embedding_var.name
+
+            # Specify where you find the metadata
+            embedding.metadata_path = METADATA_PATH #'metadata.tsv'
+
+            # Specify where you find the sprite (we will create this later)
+            embedding.sprite.image_path = SPRITES_PATH #'mnistdigits.png'
+            embedding.sprite.single_image_dim.extend([28,28])
+
+            # Say that you want to visualise the embeddings
+            projector.visualize_embeddings(embedding_writer, config)
+
+        # ----- Construct the Sprites for visualization -----
+            images = np.reshape(batch, (-1,28,28))
+            # Invert greyscale... Looks prettier in tensorboard
+            images = 1-images
+            batch_size, img_h, img_w = images.shape
+            n_plots = int(np.ceil(np.sqrt(batch_size)))
+
+            spriteimage = np.ones((img_h * n_plots ,img_w * n_plots ))
+
+            for i in range(n_plots):
+                for j in range(n_plots):
+                    this_filter = i * n_plots + j
+                    if this_filter < images.shape[0]:
+                        this_img = images[this_filter]
+                        spriteimage[i * img_h:(i + 1) * img_h,
+                          j * img_w:(j + 1) * img_w] = this_img
+
+            plt.imsave(SPRITES_PATH, spriteimage, cmap='gray')
+
+
+        # ----- Create the metadata file for visualization -----
+            if not labels is None:
+                with open(METADATA_PATH,'w') as f:
+                    f.write("Index\tLabel\n")
+                    for index,label in enumerate(labels):
+                        f.write("%d\t%d\n" % (index,label))
+
+        embed_saver = tf.train.Saver()
+        embed_saver.save(self.sess, os.path.join(EMBED_LOG_DIR, "embed.ckpt"), self.CHECKPOINT_COUNTER)
+
+        self.CHECKPOINT_COUNTER += 1

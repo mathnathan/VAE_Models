@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 from IPython import embed
+import sys
 
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
@@ -10,6 +11,10 @@ from VAE_Models.VAE import VAE as model
 from VAE_Models.architectures import DNN
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+
+#from tensorflow.python.tools.inspect_checkpoint import print_tensors_in_checkpoint_file
+#print_tensors_in_checkpoint_file(file_name='logs/embed.ckpt-0', tensor_name='Create_Embedding/Latent_Space', all_tensors=False)
+#sys.exit()
 
 # ---- First Estimate the GMM parameters using standard
 # ---- autoencoder and GMM clustering
@@ -24,9 +29,9 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
 input_dim = 784
-encoder = DNN([500,500], tf.nn.elu)
-latency_dim = 2
-decoder = DNN([500,500], tf.nn.elu)
+encoder = DNN([1024,512,256], tf.nn.elu)
+latency_dim = 64
+decoder = DNN([256,512,1024], tf.nn.elu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 1e-4,
                'optimizer': tf.train.AdamOptimizer,
@@ -37,7 +42,7 @@ hyperParams = {'reconstruct_cost': 'bernoulli',
 network = model(input_dim, encoder, latency_dim, decoder, hyperParams)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
-epochs = 1
+epochs = 100
 updates = 1000
 cost = 0
 reconstruct_cost = 0
@@ -57,7 +62,7 @@ interval = 1000 # save fig of latency space every 10 batches
 img_cost = 0.0
 test_data, test_labels = mnist.test.next_batch(1000)
 test_labels = [np.where(arr == 1) for arr in test_labels]
-for itr in range(epochs*itrs_per_epoch):
+for itr in tqdm(range(epochs*itrs_per_epoch)):
     train_data, train_labels = mnist.train.next_batch(hyperParams['batch_size'])
     tot_cost, reconstr_loss, KL_loss = network(train_data)
     cost += tot_cost
@@ -77,36 +82,9 @@ for itr in range(epochs*itrs_per_epoch):
             print("Modes\n", pi)
             print("Means\n", mean)
 
-    if itr%interval == 0:
-        fig = plt.figure()
-        axes = fig.add_subplot(1,2,1)
-        axes2 = fig.add_subplot(1,2,2)
-        axes.set_aspect('equal')
-        axes.set_title("%d Iterations" % (itr))
-        axes2.set_title("Average Cost = %f" % (img_cost/(interval*network.batch_size)))
-        img_cost = 0.
-        axes.set_xlim((-winRange,winRange))
-        axes.set_ylim((-winRange,winRange))
-        means, stds = network.transform(test_data)
-        latent_xs = means + stds*np.random.normal(size=stds.shape)
-        axes.scatter(latent_xs[:,0], latent_xs[:,1], edgecolor='k', c=test_labels)
+test_data, test_labels = mnist.test.next_batch(1000)
+network.create_embedding(test_data, np.where(test_labels)[1])
 
-        ws = winSize
-        for i, yi in enumerate(x_values):
-            for j, xi in enumerate(y_values):
-                z_mu = np.array([[xi, yi]]*network.batch_size)
-                x_mean = network.generate(z_mu)
-                canvas[(nx-i-1)*ws:(nx-i)*ws, j*ws:(j+1)*ws] = x_mean[0].reshape(ws, ws)
-
-        axes2.imshow(canvas, origin="upper")
-        plt.tight_layout()
-
-        fig.savefig(filename+'/fig%04d.png' % numPlots)
-        numPlots += 1
-        plt.close()
-
-
-test_data, test_labels = mnist.test.next_batch(hyperParams['batch_size'])
 reconstructions = network.reconstruct(test_data)
 fig = plt.figure()
 numFigs = 5
