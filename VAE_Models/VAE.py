@@ -224,7 +224,7 @@ class VAE():
                 self.saver.restore(self.sess, filename)
 
 
-    def create_embedding(self, batch, labels=None):
+    def create_embedding(self, batch, img_shape, labels=None, invert_colors=True):
         """ This will eventually be called inside some convenient training
             routine that will be exposed to the user. This creates the logs
             and variables necessary to visualize the latency space with the
@@ -232,6 +232,11 @@ class VAE():
 
             batch - (array) Input to the network. Typically of shape
                     (batch_size, [input_dimensions])
+
+            img_shape - (array like) Can be an array, tuple or list containing
+                        the dimensions of one image in (height, width) format.
+                        For example, if using MNIST img_shape might be equal
+                        to (28,28) or [28,28]
 
             labels - (array) One dimensional array containing labels.
                      The element in the ith index of 'labels' is the
@@ -243,6 +248,7 @@ class VAE():
         EMBED_LOG_DIR = self.LOG_DIR
         SPRITES_PATH =  os.path.join(self.LOG_DIR, 'sprites.png')
         METADATA_PATH =  os.path.join(self.LOG_DIR, 'metadata.tsv')
+        img_h, img_w = img_shape
 
         with tf.name_scope('Create_Embedding'):
 
@@ -253,6 +259,7 @@ class VAE():
             embedding_writer = tf.summary.FileWriter(EMBED_LOG_DIR)
 
             latent_var = self.sess.run(self.z, feed_dict={self.network_input: batch})
+            embed()
             embedding_var = tf.Variable(latent_var, trainable=False, name=EMBED_VAR_NAME)
             # Initialize the newly created embedding variable
             init_embedding_var_op = tf.variables_initializer([embedding_var])
@@ -271,16 +278,17 @@ class VAE():
 
             # Specify where you find the sprite (we will create this later)
             embedding.sprite.image_path = SPRITES_PATH #'mnistdigits.png'
-            embedding.sprite.single_image_dim.extend([28,28])
+            embedding.sprite.single_image_dim.extend([img_h,img_w])
 
             # Say that you want to visualise the embeddings
             projector.visualize_embeddings(embedding_writer, config)
 
         # ----- Construct the Sprites for visualization -----
-            images = np.reshape(batch, (-1,28,28))
-            # Invert greyscale... Looks prettier in tensorboard
-            images = 1-images
-            batch_size, img_h, img_w = images.shape
+            images = np.reshape(batch, (-1,img_h,img_w))
+            # Maybe invert greyscale... MNIST looks prettier in tensorboard
+            if invert_colors:
+                images = 1-images
+            batch_size = images.shape[0]
             n_plots = int(np.ceil(np.sqrt(batch_size)))
 
             spriteimage = np.ones((img_h * n_plots ,img_w * n_plots ))
@@ -297,11 +305,15 @@ class VAE():
 
 
         # ----- Create the metadata file for visualization -----
-            if not labels is None:
-                with open(METADATA_PATH,'w') as f:
+            with open(METADATA_PATH,'w') as f:
+                if labels is None:
+                    for index in range(batch_size):
+                        f.write("%d\n" % (index))
+                else:
                     f.write("Index\tLabel\n")
                     for index,label in enumerate(labels):
                         f.write("%d\t%d\n" % (index,label))
+
 
         embed_saver = tf.train.Saver()
         embed_saver.save(self.sess, os.path.join(EMBED_LOG_DIR, "embed.ckpt"), self.CHECKPOINT_COUNTER)

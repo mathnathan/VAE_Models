@@ -29,11 +29,11 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
 input_dim = 784
-encoder = DNN([1024,512,256], tf.nn.elu)
-latency_dim = 64
-decoder = DNN([256,512,1024], tf.nn.elu)
+encoder = DNN([512,512,256], tf.nn.elu)
+latency_dim = 10
+decoder = DNN([256,512,512], tf.nn.elu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 1e-4,
+               'learning_rate': 1e-3,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100}
 #               'alpha': 1.0,
@@ -42,7 +42,7 @@ hyperParams = {'reconstruct_cost': 'bernoulli',
 network = model(input_dim, encoder, latency_dim, decoder, hyperParams)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
-epochs = 100
+epochs = 10
 
 test_data, test_labels = mnist.train.next_batch(hyperParams['batch_size'])
 for itr in tqdm(range(epochs*itrs_per_epoch)):
@@ -50,7 +50,7 @@ for itr in tqdm(range(epochs*itrs_per_epoch)):
     tot_cost, reconstr_loss, KL_loss = network(train_data)
 
 test_data, test_labels = mnist.test.next_batch(1000)
-network.create_embedding(test_data, np.where(test_labels)[1])
+network.create_embedding(test_data, (28,28), np.where(test_labels)[1])
 
 reconstructions = network.reconstruct(test_data)
 fig = plt.figure()
