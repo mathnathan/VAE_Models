@@ -8,7 +8,7 @@ import sys
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
-from VAE_Models.architectures import DNN
+from VAE_Models.architectures import CNN, DNN
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
@@ -28,9 +28,11 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # architectures to plug in as the encoder and decoder. The glueing together
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
-input_dim = (28,28)
+input_shape = (28,28)
+cnn_arch = {'channels': 32, 'filterSize': 5, 'outputShape': 256}
+#encoder = CNN(cnn_arch)
 encoder = DNN([512,512,256], tf.nn.elu)
-latency_dim = 10
+latency_dim = 16
 decoder = DNN([256,512,512], tf.nn.elu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 1e-3,
@@ -39,10 +41,10 @@ hyperParams = {'reconstruct_cost': 'bernoulli',
 #               'alpha': 1.0,
 #               'num_clusters': 10}
 
-network = model(input_dim, encoder, latency_dim, decoder, hyperParams)
+network = model(input_shape, encoder, latency_dim, decoder, hyperParams)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
-epochs = 10
+epochs = 30
 
 test_data, test_labels = mnist.train.next_batch(hyperParams['batch_size'])
 for itr in tqdm(range(epochs*itrs_per_epoch)):
