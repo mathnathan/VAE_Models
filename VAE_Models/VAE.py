@@ -139,10 +139,10 @@ class VAE():
 
             # Now add the weights/bias for the mean reconstruction terms
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
-                self.num_input_vals)))
+                self.num_input_vals))
             x_mean_weight = tf.Variable(initial_value=x_mean_weight_val,
                     dtype=tf.float32, name='X_Mean_Weight')
-            x_mean_bias_val = np.zeros((1,self.num_input_vals)))
+            x_mean_bias_val = np.zeros((1,self.num_input_vals))
             x_mean_bias = tf.Variable(initial_value=x_mean_bias_val,
                     dtype=tf.float32, name='X_Mean_Bias')
 

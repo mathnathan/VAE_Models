@@ -29,13 +29,13 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
 input_shape = (28,28)
-cnn_arch = {'channels': 32, 'filterSize': 5, 'outputShape': 256}
-#encoder = CNN(cnn_arch)
-encoder = DNN([512,512,256], tf.nn.elu)
-latency_dim = 16
-decoder = DNN([256,512,512], tf.nn.elu)
+cnn_arch = {'channels': [8,16,32], 'filterSize': [3,3,3], 'outputShape': 256}
+encoder = CNN(cnn_arch)
+#encoder = DNN([512,512,256], tf.nn.elu)
+latency_dim = 10
+decoder = DNN([256,512,1024], tf.nn.elu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 1e-3,
+               'learning_rate': 1e-4,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100}
 #               'alpha': 1.0,
@@ -44,14 +44,15 @@ hyperParams = {'reconstruct_cost': 'bernoulli',
 network = model(input_shape, encoder, latency_dim, decoder, hyperParams)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
-epochs = 30
+epochs = 200
 
 test_data, test_labels = mnist.train.next_batch(hyperParams['batch_size'])
+print("\nAbout to begin training loop")
 for itr in tqdm(range(epochs*itrs_per_epoch)):
     train_data, train_labels = mnist.train.next_batch(hyperParams['batch_size'])
     tot_cost, reconstr_loss, KL_loss = network(train_data)
 
-test_data, test_labels = mnist.test.next_batch(1000)
+test_data, test_labels = mnist.test.next_batch(2000)
 network.create_embedding(test_data, (28,28), np.where(test_labels)[1])
 
 reconstructions = network.reconstruct(test_data)

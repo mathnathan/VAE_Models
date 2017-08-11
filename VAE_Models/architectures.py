@@ -51,7 +51,6 @@ class DNN(Neural_Network):
 
     def build_graph(self, network_input, input_shape, scope='DNN'):
 
-        print("\nBuilding DNN")
         with tf.name_scope(scope):
             num_prev_nodes = np.prod(input_shape)
             # Currently I am not keeping track of the output between layers
@@ -82,39 +81,67 @@ class CNN(Neural_Network):
         self.channels = architecture['channels']
         self.filterSize = architecture['filterSize']
         self.outputShape = architecture['outputShape']
+        self.convolution_counter = 1
         #self.strides = architecture['strides']
+
+    def add_layer(self, layer_input, filterSz, prevChannels, nextChannels):
+        cc = self.convolution_counter # Which convolution is this?
+        with tf.name_scope("Convolution_%d" % (cc)):
+            convWeightshape = [filterSz,filterSz,prevChannels,nextChannels]
+            convWeights = tf.Variable(self.xavier_init(convWeightshape),
+                    name='conv_weights%d' % (cc))
+            bias = tf.Variable(tf.zeros([nextChannels]), name='bias%d' % (cc))
+
+            # Convolutional Layer #1
+            conv = tf.nn.conv2d(layer_input, convWeights,
+                                    strides=[1, 1, 1, 1],
+                                    padding="SAME",
+                                    name='conv%d' % (cc)) # Pad the input so result of convolution is same size, i.e. (28,28)
+
+            conv_output = tf.nn.elu(tf.add(conv, bias), name='conv%d_output' % (cc))
+
+
+        self.convolution_counter += 1
+        return conv_output
+
 
     def build_graph(self, network_input, input_shape, scope='CNN'):
         """The documentation for the build_graph routine of the CNN class. To
         come..."""
 
-        print("\nBuilding CNN")
         img_h, img_w = input_shape
-        conv_input = tf.reshape(network_input, (-1,img_h, img_w,1))
+        current_input = tf.reshape(network_input, (-1,img_h, img_w,1))
+        prevChannels = 1
         with tf.name_scope(scope):
-            with tf.name_scope('Convolution_1'):
-                convWeight1shape = [self.filterSize,self.filterSize,1,self.channels]
-                convWeights1 = tf.Variable(self.xavier_init(convWeight1shape), name='conv_weights1')
-                bias1 = tf.Variable(tf.zeros([self.channels]), name='bias1')
+            for filterSz,numChannels in zip(self.filterSize,self.channels):
+                current_input = self.add_layer(current_input, filterSz, prevChannels, numChannels)
+                prevChannels = numChannels
 
-                # Convolutional Layer #1
-                conv = tf.nn.conv2d(conv_input, convWeights1,
-                                        strides=[1, 1, 1, 1],
-                                        padding="SAME",
-                                        name='conv1') # Pad the input so result of convolution is same size, i.e. (28,28)
+        fcWeights = tf.Variable(self.xavier_init([img_h, img_w,
+            prevChannels, self.outputShape]), dtype=tf.float32,
+            name='fc_weights')
+        fcBias = tf.Variable(tf.zeros([self.outputShape]),
+                name='fc_bias')
 
-                conv_output = tf.nn.elu(tf.add(conv, bias1), name='conv_output')
+        fcOutput = tf.nn.elu(tf.add(tf.tensordot(current_input, fcWeights,
+            [[1,2,3], [0,1,2]]), fcBias), name='fc_output')
 
-                fcWeights = tf.Variable(self.xavier_init([img_h, img_w,
-                    self.channels, self.outputShape]), dtype=tf.float32, name='fc_weights')
-                fcBias = tf.Variable(tf.zeros([self.outputShape]), name='meanBias')
-
-                fcOutput = tf.nn.elu(tf.add(tf.tensordot(conv_output, fcWeights,
-                    [[1,2,3], [0,1,2]]), fcBias), name='fc_output')
 
         return fcOutput
 
-        """
+
+    def get_output_dim(self):
+
+        return self.outputShape
+
+
+class DCNN(Neural_Network):
+
+    def __init__(self):
+        None
+
+    def build_graph(self):
+         """
             self.meanWeights = tf.Variable(self.xavier_init([img_h,img_w,channels,self.hiddenNodes]), name='meanWeights')
             self.sigmaWeights = tf.Variable(self.xavier_init([img_h,img_w,channels,self.hiddenNodes]), name='sigmaWeights')
             self.meanBias = tf.Variable(tf.zeros([self.hiddenNodes]), name='meanBias')
@@ -145,19 +172,6 @@ class CNN(Neural_Network):
             self.deconv2 = tf.reshape(self.deconv, [self.batch_size,self.winSize*self.winSize])
             self.x_reconstruction = tf.sigmoid(tf.add(self.deconv2, self.convBias2))
         """
-
-    def get_output_dim(self):
-
-        return self.outputShape
-
-
-class DCNN(Neural_Network):
-
-    def __init__(self):
-        None
-
-    def build_graph(self):
-        None
 
 
 class CNN3D(Neural_Network):
