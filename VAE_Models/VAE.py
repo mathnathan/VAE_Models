@@ -184,6 +184,11 @@ class VAE():
 
             # User specifies optimizer in the hyperParams argument to constructor
             with tf.name_scope('Optimizer'):
+                #sess = tf.InteractiveSession() # --- TO BE REMOVED
+                #sess.run(tf.global_variables_initializer()) # --- TO BE REMOVED
+                #network_input = np.random.rand(100,784)
+                #print("deconv output = ", sess.run(self.decoder_output,
+                #    feed_dict={self.network_input: network_input}))
                 self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
 

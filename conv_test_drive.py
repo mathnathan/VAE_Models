@@ -29,15 +29,15 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
 input_shape = (28,28)
-cnn_arch = {'channels': [8,16,32], 'filterSize': [3,3,3], 'outputShape': 256}
+cnn_arch = {'channels': [8,16,32], 'filterSizes': [(3,3),(3,3),(3,3)], 'fc_layer_size': 256}
 encoder = CNN(cnn_arch)
 #encoder = DNN([512,512,256], tf.nn.elu)
 latency_dim = 10
-decoder = DNN([256,512,1024], tf.nn.elu)
+decoder = DNN([512,1024,1024], tf.nn.elu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 1e-4,
                'optimizer': tf.train.AdamOptimizer,
-               'batch_size': 100}
+               'batch_size': 256}
 #               'alpha': 1.0,
 #               'num_clusters': 10}
 
