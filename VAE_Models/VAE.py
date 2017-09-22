@@ -39,17 +39,25 @@ class VAE():
         self.decoder = decoder
         self.batch_size = hyperParams['batch_size'] # add error checking
         self.learning_rate = hyperParams['learning_rate'] # Add error checking
-        self.num_clusters = hyperParams['num_clusters']
-        self.alpha = hyperParams['alpha']
-        if hyperParams['reconstruct_cost'] in ['bernoulli', 'gaussian']:
-            self.reconstruct_cost = hyperParams['reconstruct_cost'] # Add error checking
-        else:
-            SystemExit("ERR: Only Gaussian and Bernoulli Reconstruction Functionality\n")
-        if hyperParams['prior'] in ['gaussian', 'gmm']:
-            self.prior = hyperParams['prior']
-        else:
-            SystemExit("ERR: Only Gaussian and GMM priors are currently supported\n")
         self.optimizer = hyperParams['optimizer'] # Add error checking
+        hp_keys = hyperParams.keys()
+        if 'prior' in hp_keys:
+            if hyperParams['prior'] in ['gaussian', 'gmm']:
+                self.prior = hyperParams['prior']
+            else:
+                SystemExit("ERR: Only Gaussian and GMM priors are currently supported\n")
+            if 'num_clusters' in hp_keys:
+                self.num_clusters = hyperParams['num_clusters']
+            elif self.prior == 'gmm':
+                print("Number of Clusters not specified... Defaulting to 10.\n Specify with 'num_clusters' parameters")
+                self.num_clusters = 10
+        else:
+            self.prior = 'gaussian'
+        if 'reconstruct_cost' in hp_keys:
+            if hyperParams['reconstruct_cost'] in ['bernoulli', 'gaussian']:
+                self.reconstruct_cost = hyperParams['reconstruct_cost'] # Add error checking
+            else:
+                SystemExit("ERR: Only Gaussian and Bernoulli Reconstruction Functionality Supported\n")
 
         self.__build_graph()
         self.__create_loss()
