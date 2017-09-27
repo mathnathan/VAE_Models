@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
 import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
@@ -24,12 +23,17 @@ encoder = DNN([500,500,2000], tf.nn.relu)
 latency_dim = 10
 decoder = DNN([2000,500,500], tf.nn.relu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 1e-4,
+               'learning_rate': 0.0002,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100,
                'num_clusters': 10,
                'prior': 'gmm',
                'variational': True}
+
+itrs_per_epoch = dataset_size // hyperParams['batch_size']
+hyperParams['decay_steps'] = 10*itrs_per_epoch
+hyperParams['decay_rate'] = 0.9
+epochs = 300
 
 initializers = pickle.load(open('initializers.pkl', 'rb'))
 
@@ -39,13 +43,10 @@ VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, initializers
 #print("mu = ", mu)
 #print("std = ", std)
 
-itrs_per_epoch = dataset_size // hyperParams['batch_size']
-epochs = 300
 
 if os.path.exists(FILENAME+'.meta'):
     VaDE.load(FILENAME)
 else:
-    print("EXCEPTION!!\n\n")
     for itr in tqdm(range(epochs*itrs_per_epoch)):
         ds = np.random.choice(datasets, p=dataset_probs)
         data, labels = ds.next_batch(hyperParams['batch_size'])

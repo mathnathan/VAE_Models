@@ -73,7 +73,7 @@ class VAE():
         try:
             self.batch_size = hyperParams['batch_size']
             self.optimizer = hyperParams['optimizer']
-            self.learning_rate = hyperParams['learning_rate']
+            self.starter_learning_rate = hyperParams['learning_rate']
         except KeyError as key:
             raise KeyError('%s must be specified in hyperParams' % (key)) from key
 
@@ -109,6 +109,26 @@ class VAE():
             self.alpha = hyperParams['alpha']
         except:
             self.alpha = 1.0
+
+        try:
+            self.decay_step = hyperParams['decay_step']
+        except:
+            # If not specified set it so high that there is no decay
+            self.decay_step = 1e14
+
+        try:
+            self.decay_rate = hyperParams['decay_rate']
+        except:
+            print("\n--- Decay Rate not specified... Defaulting to 0.9. Specify with 'decay_rate' parameter")
+            self.decay_rate = 0.9
+
+        # Used for exponential learning rate decay
+        self.global_step = tf.Variable(0, trainable=False)
+        self.learning_rate = tf.train.exponential_decay(self.starter_learning_rate,
+                                                        self.global_step,
+                                                        self.decay_step,
+                                                        self.decay_rate)
+
 
     def __call__(self, network_input):
         """ Over load the parenthesis operator to act as a oneshot call for
@@ -166,8 +186,7 @@ class VAE():
                     cov = np.eye(self.latent_dim)
                     mu_init = np.random.multivariate_normal(means, cov, self.num_clusters)
                 #self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
-# Not sure if the transpose is necessary. Testing without it
-                self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
+                self.gmm_mu = tf.Variable(mu_init, dtype=tf.float32)
                 tf.summary.histogram('gmm_mu', self.gmm_mu)
 
                 if 'gmm_log_var' in self.initializers:
@@ -271,52 +290,60 @@ class VAE():
                     #network_input = np.random.rand(100,784)
                     #print("deconv output = ", sess.run(self.decoder_output,
                     #    feed_dict={self.network_input: network_input}))
-                    self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
+                    self.train_op = self.optimizer(self.learning_rate).minimize(self.cost,
+                            global_step=self.global_step)
 
             elif self.prior == 'gmm':
-                # Reshape the GMM tensors in a frustratingly convoluted way to
-                # be able to vectorize the computation of p(z|x) = E[p(c|z)]
-                #reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
-                #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
-                #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
-                gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
-                gmm_mu = tf.reshape(tf.tile(self.gmm_mu, [self.batch_size,1]),
-                        (self.batch_size,self.latent_dim,self.num_clusters),
+                # Reshape everything to be compatible with broadcasting for
+                # dimensions of (batch_size, num_clusters, latent_dim)
+                # Except gmm_pi, it is used infrequently and the below reshaping is enough
+                reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
+                exp_gmm_pi = tf.exp(reshaped_gmm_pi)
+                gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
+
+                #gmm_mu = tf.reshape(tf.tile(self.gmm_mu, [self.batch_size,1]),
+                #        (self.batch_size,self.latent_dim,self.num_clusters),
+                #        name='gmm_mu')
+                gmm_mu = tf.reshape(self.gmm_mu, (1,self.num_clusters,self.latent_dim),
                         name='gmm_mu')
-                gmm_log_var = tf.reshape(tf.tile(self.gmm_log_var, [self.batch_size,1]),
-                        (self.batch_size,self.latent_dim,self.num_clusters),
+                #gmm_log_var = tf.reshape(tf.tile(self.gmm_log_var, [self.batch_size,1]),
+                #        (self.batch_size,self.latent_dim,self.num_clusters),
+                #        name='gmm_log_var')
+                gmm_log_var = tf.reshape(self.gmm_log_var,(1,self.num_clusters,self.latent_dim),
                         name='gmm_log_var')
-                z = tf.reshape(self.z, (self.batch_size, self.latent_dim, 1),
+                z = tf.reshape(self.z, (self.batch_size, 1, self.latent_dim),
                         name='z')
-                z_mean = tf.reshape(self.z_mean, (self.batch_size,
-                    self.latent_dim, 1), name='z_mean')
-                z_log_var = tf.reshape(self.z_log_var, (self.batch_size,
-                    self.latent_dim, 1), name='z_log_var')
+                z_mean = tf.reshape(self.z_mean, (self.batch_size, 1,
+                    self.latent_dim), name='z_mean')
+                z_log_var = tf.reshape(self.z_log_var, (self.batch_size, 1,
+                    self.latent_dim), name='z_log_var')
 
-                # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
-                # resulting shape = (batch_size, num_clusters)
-                p_cz = tf.exp(tf.log(gmm_pi) - 0.5*(self.latent_dim*tf.log(2*np.pi) +
-                        tf.reduce_sum(gmm_log_var + tf.square(z-gmm_mu) /
-                        tf.exp(gmm_log_var), axis=1)), name='p_cz') + 1e-10
+                with tf.name_scope('Determine_p_c_z'):
+                    # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
+                    # resulting shape = (batch_size, num_clusters)
+                    p_cz = tf.exp(tf.log(1e-10+gmm_pi)
+                            - 0.5*(tf.reduce_sum(tf.log(2*np.pi)
+                            + gmm_log_var + tf.square(z-gmm_mu)
+                            / tf.exp(gmm_log_var), axis=2)), name='p_cz')
 
-                # Next we sum over the clusters making the marginal probability p(z)
-                p_z = tf.reduce_sum(p_cz, axis=1, keep_dims=True, name='p_z')
-                tf.summary.scalar('p_z', tf.reduce_mean(p_z))
+                    # Next we sum over the clusters making the marginal probability p(z)
+                    p_z = tf.reduce_sum(p_cz, axis=1, keep_dims=True, name='p_z')
+                    tf.summary.scalar('p_z', tf.reduce_mean(p_z))
 
-                # Finally we calculate the resulting posterior p(c|z), in GMM clustering
-                # literature this is called the 'responsibility' and is denoted by a
-                # gamma - shape = (batch_size, num_clusters)
-                self.gamma = tf.divide(p_cz, p_z, name='gamma')
-                tf.summary.histogram('gamma', self.gamma)
+                    # Finally we calculate the resulting posterior p(c|z), in GMM clustering
+                    # literature this is called the 'responsibility' and is denoted by a
+                    # gamma - shape = (batch_size, num_clusters)
+                    self.gamma = tf.divide(p_cz, 1e-10+p_z, name='gamma')
+                    tf.summary.histogram('gamma', self.gamma)
 
 
                 if self.reconstruct_cost == "bernoulli":
                     with tf.name_scope('Bernoulli_Reconstruction'):
                         # E[log p(x|z)]
                         p_x_z = tf.reduce_mean(tf.reduce_sum(self.network_input *
-                                tf.log(1e-10 + self.x_mean)
+                                tf.log(1e-7 + self.x_mean)
                                 + (1-self.network_input)
-                                * tf.log(1e-10 + 1 - self.x_mean),
+                                * tf.log(1e-7 + 1 - self.x_mean),
                                 axis=1, name='p_x_z'))
                 elif self.reconstruct_cost == "gaussian":
                     with tf.name_scope('Gaussian_Reconstruction'):
@@ -324,7 +351,7 @@ class VAE():
                         p_x_z = tf.reduce_mean(tf.square(self.network_input-self.x_mean),
                                 name='p_x_z')
 
-                tf.summary.scalar('Ep_x_z', p_x_z)
+                tf.summary.scalar('E_p_x_z', p_x_z)
 
                 with tf.name_scope('Total_Cost'):
 
@@ -334,21 +361,21 @@ class VAE():
                             + tf.reduce_sum(gmm_log_var
                             + tf.exp(z_log_var)/tf.exp(gmm_log_var)
                             + tf.square(z_mean-gmm_mu)/tf.exp(gmm_log_var),
-                            axis=1)), axis=1))
-                    tf.summary.scalar('Ep_z_c', p_z_c)
+                            axis=2)), axis=1))
+                    tf.summary.scalar('E_p_z_c', p_z_c)
 
                     # E[log p(c)]
-                    p_c = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(gmm_pi), axis=1))
-                    tf.summary.scalar('Ep_c', p_c)
+                    p_c = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(1e-10+gmm_pi), axis=1))
+                    tf.summary.scalar('E_p_c', p_c)
 
                     # E[log q(z|x)]
                     q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*np.pi)
-                            + tf.reduce_sum(1 + z_log_var, axis=1)))
-                    tf.summary.scalar('Eq_z_x', q_z_x)
+                            + tf.reduce_sum(1 + z_log_var, axis=2)))
+                    tf.summary.scalar('E_q_z_x', q_z_x)
 
                     # E[log q(c|x)]
-                    q_c_x = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(self.gamma),1))
-                    tf.summary.scalar('Eq_c_x', q_c_x)
+                    q_c_x = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(1e-10+self.gamma),1))
+                    tf.summary.scalar('E_q_c_x', q_c_x)
 
                     self.cost = -(p_x_z + p_z_c + p_c - q_z_x - q_c_x)
                 tf.summary.scalar('Cost', self.cost)
@@ -359,7 +386,8 @@ class VAE():
                 tf.summary.scalar('KL_Loss', self.regularizer)
 
                 # User specifies optimizer in the hyperParams argument to constructor
-                self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
+                self.train_op = self.optimizer(self.learning_rate).minimize(self.cost,
+                        global_step=self.global_step)
 
                 # Ensure modes are normalized
                 #self.normalize_pis_op = tf.assign(self.gmm_pi,self.gmm_pi/tf.reduce_sum(self.gmm_pi))

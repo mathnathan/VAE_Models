@@ -12,9 +12,10 @@ import sys
 class VaDE():
 
 
-    def __init__(self, input_dim, encoder, latent_dim, decoder, hyperParams):
+    def __init__(self, input_shape, encoder, latent_dim, decoder, hyperParams):
 
-        self.input_dim = input_dim
+        self.input_dim = input_shape
+        self.num_input_vals = np.prod(input_shape)
         self.encoder = encoder
         self.latent_dim = latent_dim
         self.decoder = decoder
@@ -79,14 +80,14 @@ class VaDE():
         enc_output_dim = self.encoder.get_output_dim()
 
         # Now add the weights/bias for the mean and var of the latency dim
-        z_mean_weight_val = self.encoder.xavier_init(enc_output_dim, self.latent_dim)
+        z_mean_weight_val = self.encoder.xavier_init((enc_output_dim, self.latent_dim))
         z_mean_weight = tf.Variable(initial_value=z_mean_weight_val, dtype=tf.float32)
         z_mean_bias_val = np.zeros((1,self.latent_dim))
         z_mean_bias = tf.Variable(initial_value=z_mean_bias_val, dtype=tf.float32)
 
         self.z_mean = encoder_output @ z_mean_weight + z_mean_bias
 
-        z_log_var_weight_val = self.encoder.xavier_init(enc_output_dim, self.latent_dim)
+        z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim, self.latent_dim))
         z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val, dtype=tf.float32)
         z_log_var_bias_val = np.zeros((1,self.latent_dim))
         z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val, dtype=tf.float32)
@@ -103,9 +104,9 @@ class VaDE():
         dec_output_dim = self.decoder.get_output_dim()
 
         # Now add the weights/bias for the mean reconstruction terms
-        x_mean_weight_val = self.decoder.xavier_init(dec_output_dim, self.input_dim)
+        x_mean_weight_val = self.decoder.xavier_init((dec_output_dim, self.num_input_vals))
         x_mean_weight = tf.Variable(initial_value=x_mean_weight_val, dtype=tf.float32)
-        x_mean_bias_val = np.zeros((1,self.input_dim))
+        x_mean_bias_val = np.zeros((1,self.num_input_vals))
         x_mean_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=tf.float32)
 
         # Just do Bernoulli for now. Add more functionality later
@@ -114,9 +115,10 @@ class VaDE():
         elif self.reconstruct_cost == 'gaussian':
             self.x_mean = decoder_output @ x_mean_weight + x_mean_bias
             # Now add the weights/bias for the sigma reconstruction term
-            x_sigma_weight_val = self.encoder.xavier_init(dec_output_dim, self.input_dim)
+            x_sigma_weight_val = self.encoder.xavier_init((dec_output_dim,
+                self.num_input_vals))
             x_sigma_weight = tf.Variable(initial_value=x_sigma_weight_val, dtype=tf.float32)
-            x_sigma_bias_val = np.zeros(self.input_dim)
+            x_sigma_bias_val = np.zeros(self.num_input_vals)
             x_sigma_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=tf.float32)
             self.x_sigma = decoder_output @ x_sigma_weight + x_sigma_bias
 
