@@ -7,7 +7,10 @@ import tensorflow as tf
 from IPython import embed
 import matplotlib.pyplot as plt
 from tensorflow.contrib.tensorboard.plugins import projector
+from tensorflow.python import debug as tf_debug
 import os, sys
+
+DEBUG = 0
 
 # Requires Python 3.6+ and Tensorflow 1.1+
 
@@ -28,7 +31,7 @@ class VAE():
 
 
     def __init__(self, input_shape, encoder, latent_dim, decoder, hyperParams,
-            log_dir=None):
+            initializers={}, logdir=None):
 
         self.CHECKPOINT_COUNTER = 0
         self.CALL_COUNTER = 0
@@ -37,28 +40,8 @@ class VAE():
         self.encoder = encoder
         self.latent_dim = latent_dim
         self.decoder = decoder
-        self.batch_size = hyperParams['batch_size'] # add error checking
-        self.learning_rate = hyperParams['learning_rate'] # Add error checking
-        self.optimizer = hyperParams['optimizer'] # Add error checking
-        hp_keys = hyperParams.keys()
-        if 'prior' in hp_keys:
-            if hyperParams['prior'] in ['gaussian', 'gmm']:
-                self.prior = hyperParams['prior']
-            else:
-                SystemExit("ERR: Only Gaussian and GMM priors are currently supported\n")
-            if 'num_clusters' in hp_keys:
-                self.num_clusters = hyperParams['num_clusters']
-            elif self.prior == 'gmm':
-                print("Number of Clusters not specified... Defaulting to 10.\n Specify with 'num_clusters' parameters")
-                self.num_clusters = 10
-        else:
-            self.prior = 'gaussian'
-        if 'reconstruct_cost' in hp_keys:
-            if hyperParams['reconstruct_cost'] in ['bernoulli', 'gaussian']:
-                self.reconstruct_cost = hyperParams['reconstruct_cost'] # Add error checking
-            else:
-                SystemExit("ERR: Only Gaussian and Bernoulli Reconstruction Functionality Supported\n")
-
+        self.__parse_hyperParams(hyperParams)
+        self.initializers = dict(initializers)
         self.__build_graph()
         self.__create_loss()
 
@@ -68,13 +51,16 @@ class VAE():
         config.gpu_options.allow_growth=True
         self.sess = tf.InteractiveSession(config=config)
         self.sess.run(tf.global_variables_initializer())
+        if DEBUG:
+            self.sess = tf_debug.LocalCLIDebugWrapperSession(self.sess)
+            self.sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
         # Use this to create internal saving and loading functionality
         self.saver = tf.train.Saver()
         # Store logs here. Checkpoints, models, tensorboard data
-        if log_dir is None:
-            log_dir = os.path.join(os.getcwd(), 'logs')
-        self.LOG_DIR = log_dir
+        if logdir is None:
+            logdir = os.path.join(os.getcwd(), 'logs')
+        self.LOG_DIR = logdir
 	# First start with logging the graph
         tf.summary.FileWriter(self.LOG_DIR, graph=self.sess.graph)
 	# Now the summary statistics
@@ -82,12 +68,56 @@ class VAE():
         self.summary_writer = tf.summary.FileWriter(self.LOG_DIR+'/summaries')
 
 
+    def __parse_hyperParams(self, hyperParams):
+
+        try:
+            self.batch_size = hyperParams['batch_size']
+            self.optimizer = hyperParams['optimizer']
+            self.learning_rate = hyperParams['learning_rate']
+        except KeyError as key:
+            raise KeyError('%s must be specified in hyperParams' % (key)) from key
+
+        try:
+            self.prior = hyperParams['prior']
+            if not (self.prior in ['gaussian', 'gmm']):
+                raise ValueError("No functionality for %s prior. Only \
+                        'gaussian' and 'gmm' priors are supported" % (key)) from key
+        except KeyError as key:
+            print("\n--- Prior not specified... Defaulting to 'gaussian'. Specify with 'prior' parameter")
+            self.prior = 'gaussian'
+        else:
+            try:
+                self.num_clusters = hyperParams['num_clusters']
+            except KeyError as key:
+                if self.prior == 'gmm':
+                    print("\n--- Number of GMM Modes not specified... Defaulting to 10. Specify with 'num_clusters' parameter")
+                    self.num_clusters = 10
+        try:
+            self.reconstruct_cost = hyperParams['reconstruct_cost']
+            if not (self.reconstruct_cost in ['bernoulli', 'gaussian']):
+                raise ValueError("Only 'gaussian' and 'bernoulli' reconstruction functionality supported\n")
+        except KeyError:
+            print("\n--- Reconstruction Cost not specified... Defaulting to 'gaussian'. Specify with 'reconstruct_cost' parameter")
+            self.reconstruct_cost = 'gaussian'
+
+        try:
+            self.variational = hyperParams['variational']
+        except:
+            self.variational = True
+
+        try:
+            self.alpha = hyperParams['alpha']
+        except:
+            self.alpha = 1.0
+
     def __call__(self, network_input):
         """ Over load the parenthesis operator to act as a oneshot call for
             passing data through the network and updating with the optimizer
 
             network_input - (array) Input to the network. Typically of shape
-            (batch_size, [input_dimensions])
+            (batch_size, input_dimensions)
+
+            returns - (total cost, reconstruction loss, KL loss)
         """
 
         input_dict = {self.network_input: network_input}
@@ -122,18 +152,30 @@ class VAE():
                 # or framework is not different than a traditional VAE. Here we just
                 # add extra variables and then learn them in the modified cost function
                 # This is only for the GMM prior
-                pi_init = np.ones(self.num_clusters)/self.num_clusters
+                if 'gmm_pi' in self.initializers:
+                    pi_init = self.initializers['gmm_pi']
+                else:
+                    pi_init = np.ones(self.num_clusters)/self.num_clusters
                 self.gmm_pi = tf.Variable(pi_init, dtype=tf.float32)
+                tf.summary.histogram('gmm_pi', self.gmm_pi)
 
-                means = np.zeros(self.latent_dim)
-                cov = np.eye(self.latent_dim)
-                mu_init = np.random.multivariate_normal(means, cov, self.num_clusters)
-                #mu_init = np.zeros((self.latent_dim,self.num_clusters))
+                if 'gmm_mu' in self.initializers:
+                    mu_init = self.initializers['gmm_mu']
+                else:
+                    means = np.zeros(self.latent_dim)
+                    cov = np.eye(self.latent_dim)
+                    mu_init = np.random.multivariate_normal(means, cov, self.num_clusters)
+                #self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
+# Not sure if the transpose is necessary. Testing without it
                 self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
+                tf.summary.histogram('gmm_mu', self.gmm_mu)
 
-                log_var_init = np.ones((self.latent_dim, self.num_clusters))
+                if 'gmm_log_var' in self.initializers:
+                    log_var_init = self.initializers['gmm_log_var']
+                else:
+                    log_var_init = np.ones((self.latent_dim, self.num_clusters))
                 self.gmm_log_var = tf.Variable(log_var_init, dtype=tf.float32)
-
+                tf.summary.histogram('gmm_log_var', self.gmm_log_var)
 
 
             # Construct the encoder network and get its output
@@ -165,7 +207,7 @@ class VAE():
 
             z_shape = tf.shape(self.z_log_var)
             eps = tf.random_normal(z_shape, 0, 1, dtype=tf.float32)
-            self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps
+            self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps if self.variational else self.z_mean
 
             # Construct the decoder network and get its output
             decoder_output = self.decoder.build_graph(self.z, self.latent_dim,
@@ -182,7 +224,6 @@ class VAE():
             x_mean_bias = tf.Variable(initial_value=x_mean_bias_val,
                     dtype=tf.float32, name='X_Mean_Bias')
 
-            # Just do Bernoulli for now. Add more functionality later
             if self.reconstruct_cost == 'bernoulli':
                 self.x_mean = tf.nn.sigmoid(decoder_output @ x_mean_weight + x_mean_bias)
             elif self.reconstruct_cost == 'gaussian':
@@ -209,7 +250,10 @@ class VAE():
                                     self.x_mean),1))
                 elif self.reconstruct_cost == "gaussian":
                     with tf.name_scope('Gaussian_Reconstruction'):
-                        self.reconstruct_loss = tf.reduce_sum(tf.square(self.network_input-self.x_mean))
+                        if self.variational:
+                            self.reconstruct_loss = tf.reduce_mean(tf.square(self.network_input-self.x_mean))
+                        else:
+                            self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_input-self.x_mean))
                 tf.summary.scalar('Reconstruction_Error', self.reconstruct_loss)
 
                 with tf.name_scope('KL_Error'):
@@ -217,7 +261,7 @@ class VAE():
                                 tf.square(self.z_mean) - tf.exp(self.z_log_var), axis=1))
                     tf.summary.scalar('KL_Loss', self.regularizer)
                 with tf.name_scope('Total_Cost'):
-                    self.cost = -(self.reconstruct_loss - self.regularizer)
+                    self.cost = -(self.reconstruct_loss - self.alpha*self.regularizer)
                     tf.summary.scalar('Cost', self.cost)
 
                 # User specifies optimizer in the hyperParams argument to constructor
@@ -232,73 +276,93 @@ class VAE():
             elif self.prior == 'gmm':
                 # Reshape the GMM tensors in a frustratingly convoluted way to
                 # be able to vectorize the computation of p(z|x) = E[p(c|z)]
+                #reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
+                #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
+                #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
                 gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
                 gmm_mu = tf.reshape(tf.tile(self.gmm_mu, [self.batch_size,1]),
-                        (self.batch_size,self.latent_dim,self.num_clusters))
+                        (self.batch_size,self.latent_dim,self.num_clusters),
+                        name='gmm_mu')
                 gmm_log_var = tf.reshape(tf.tile(self.gmm_log_var, [self.batch_size,1]),
-                        (self.batch_size,self.latent_dim,self.num_clusters))
-                z = tf.reshape(self.z, (self.batch_size, self.latent_dim, 1))
+                        (self.batch_size,self.latent_dim,self.num_clusters),
+                        name='gmm_log_var')
+                z = tf.reshape(self.z, (self.batch_size, self.latent_dim, 1),
+                        name='z')
+                z_mean = tf.reshape(self.z_mean, (self.batch_size,
+                    self.latent_dim, 1), name='z_mean')
+                z_log_var = tf.reshape(self.z_log_var, (self.batch_size,
+                    self.latent_dim, 1), name='z_log_var')
 
                 # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
                 # resulting shape = (batch_size, num_clusters)
-                p_c_z = tf.exp(tf.log(gmm_pi) - 0.5*(tf.log(2*np.pi) +
+                p_cz = tf.exp(tf.log(gmm_pi) - 0.5*(self.latent_dim*tf.log(2*np.pi) +
                         tf.reduce_sum(gmm_log_var + tf.square(z-gmm_mu) /
-                        tf.exp(gmm_log_var), axis=1))) + 1e-10
+                        tf.exp(gmm_log_var), axis=1)), name='p_cz') + 1e-10
 
                 # Next we sum over the clusters making the marginal probability p(z)
-                marginal = tf.reduce_sum(p_c_z, axis=1, keep_dims=True)
+                p_z = tf.reduce_sum(p_cz, axis=1, keep_dims=True, name='p_z')
+                tf.summary.scalar('p_z', tf.reduce_mean(p_z))
 
                 # Finally we calculate the resulting posterior p(c|z), in GMM clustering
                 # literature this is called the 'responsibility' and is denoted by a
                 # gamma - shape = (batch_size, num_clusters)
-                gamma = p_c_z / marginal
+                self.gamma = tf.divide(p_cz, p_z, name='gamma')
+                tf.summary.histogram('gamma', self.gamma)
+
 
                 if self.reconstruct_cost == "bernoulli":
                     with tf.name_scope('Bernoulli_Reconstruction'):
-                        # log p(x|z) - shape=(batchsize)
-                        p_x_z = tf.reduce_sum(self.network_input * tf.log(1e-10 + self.x_mean)
-                                           + (1-self.network_input) * tf.log(1e-10 + 1 -
-                                               self.x_mean), axis=1)
+                        # E[log p(x|z)]
+                        p_x_z = tf.reduce_mean(tf.reduce_sum(self.network_input *
+                                tf.log(1e-10 + self.x_mean)
+                                + (1-self.network_input)
+                                * tf.log(1e-10 + 1 - self.x_mean),
+                                axis=1, name='p_x_z'))
                 elif self.reconstruct_cost == "gaussian":
                     with tf.name_scope('Gaussian_Reconstruction'):
-                        # log p(x|z) - shape=(batchsize)
-                        p_x_z = tf.reduce_sum(tf.square(tf.subtract(self.network_input,
-                            self.x_mean)), axis=1)
+                        # E[log p(x|z)]
+                        p_x_z = tf.reduce_mean(tf.square(self.network_input-self.x_mean),
+                                name='p_x_z')
 
-                # log q(z|x) - shape=(batch_size)
-                q_z_x = -0.5*(self.latent_dim*tf.log(2*np.pi) +
-                         tf.reduce_sum(self.z_log_var + tf.square(self.z-self.z_mean)
-                             / tf.exp(self.z_log_var), axis=1))
-
-                # log p(z|c) - shape=(batch_size,num_clusters)
-                p_z_c = -0.5*(tf.log(2*np.pi) + tf.reduce_sum(gmm_log_var +
-                        tf.square(z-gmm_mu)/tf.exp(gmm_log_var),
-                        axis=1)) + 1e-10
-
-                # log p(c) - shape=(num_clusters)
-                p_c = tf.log(tf.reshape(gmm_pi, [self.num_clusters]))
-
-                # log q(c|x) = log E[p(c|z)] - shape=(num_clusters)
-                q_c_x = tf.log(tf.reduce_mean(gamma,axis=0))
+                tf.summary.scalar('Ep_x_z', p_x_z)
 
                 with tf.name_scope('Total_Cost'):
-                    self.cost = -(tf.reduce_mean(p_x_z-q_z_x) +
-                                tf.reduce_sum(tf.exp(q_c_x) *
-                                (tf.reduce_mean(p_z_c,axis=0) +
-                                p_c - q_c_x)))
+
+                    # E[log p(z|c)]
+                    p_z_c = tf.reduce_mean(-0.5*tf.reduce_sum(self.gamma
+                            * (self.latent_dim*tf.log(2*np.pi)
+                            + tf.reduce_sum(gmm_log_var
+                            + tf.exp(z_log_var)/tf.exp(gmm_log_var)
+                            + tf.square(z_mean-gmm_mu)/tf.exp(gmm_log_var),
+                            axis=1)), axis=1))
+                    tf.summary.scalar('Ep_z_c', p_z_c)
+
+                    # E[log p(c)]
+                    p_c = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(gmm_pi), axis=1))
+                    tf.summary.scalar('Ep_c', p_c)
+
+                    # E[log q(z|x)]
+                    q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*np.pi)
+                            + tf.reduce_sum(1 + z_log_var, axis=1)))
+                    tf.summary.scalar('Eq_z_x', q_z_x)
+
+                    # E[log q(c|x)]
+                    q_c_x = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(self.gamma),1))
+                    tf.summary.scalar('Eq_c_x', q_c_x)
+
+                    self.cost = -(p_x_z + p_z_c + p_c - q_z_x - q_c_x)
                 tf.summary.scalar('Cost', self.cost)
 
-                self.reconstruct_loss = tf.reduce_mean(p_x_z)
+                self.reconstruct_loss = -p_x_z
                 tf.summary.scalar('Reconstruction_Error', self.reconstruct_loss)
-                self.regularizer = self.cost - self.reconstruct_loss
+                self.regularizer = self.reconstruct_loss - self.cost
                 tf.summary.scalar('KL_Loss', self.regularizer)
 
                 # User specifies optimizer in the hyperParams argument to constructor
                 self.train_op = self.optimizer(learning_rate=self.learning_rate).minimize(self.cost)
 
                 # Ensure modes are normalized
-                self.normalize_pis_op = tf.assign(self.gmm_pi,self.gmm_pi/tf.reduce_sum(self.gmm_pi))
-
+                #self.normalize_pis_op = tf.assign(self.gmm_pi,self.gmm_pi/tf.reduce_sum(self.gmm_pi))
 
 
     def reconstruct(self, network_input):
@@ -319,9 +383,14 @@ class VAE():
 
         with tf.name_scope('Transform'):
             input_dict={self.network_input: network_input}
-            targets = (self.z_mean, self.z_log_var)
-            means, log_vars = self.sess.run(targets, feed_dict=input_dict)
-            return (means, np.sqrt(np.exp(log_vars)))
+            if self.variational:
+                targets = (self.z_mean, self.z_log_var)
+                means, log_vars = self.sess.run(targets, feed_dict=input_dict)
+                return (means, np.sqrt(np.exp(log_vars)))
+            else:
+                targets = self.z_mean
+                means = self.sess.run(targets, feed_dict=input_dict)
+                return means
 
 
     def generate(self, z=None):
@@ -336,8 +405,7 @@ class VAE():
                 if z is None:
                     targets = (self.gmm_pi, self.gmm_mu, self.gmm_log_var)
                     pis, means, log_vars = self.sess.run(targets)
-                    embed()
-                    sys.exit()
+                    pis /= pis.sum()
                     cluster = np.random.choice(range(self.num_clusters), p=pis)
                     mean = means[cluster]
                     std = np.sqrt(np.exp(log_vars[cluster]))
@@ -364,9 +432,18 @@ class VAE():
         if self.prior == 'gmm':
             targets = (self.gmm_pi, self.gmm_mu, self.gmm_log_var)
             pis, means, log_vars = self.sess.run(targets)
+            pis /= pis.sum()
             return (pis, means, np.sqrt(np.exp(log_vars)))
         elif self.prior == 'gaussian':
             return None
+
+
+    def predict_clusters(self, input_x):
+
+        input_dict = {self.network_input: input_x}
+        targets = (self.q_c_x) # Probability of each cluster given x. aka responsibility
+        predictions = self.sess.run(targets, feed_dict=input_dict)
+        return predictions
 
 
     def create_embedding(self, batch, img_shape, labels=None, invert_colors=True):
