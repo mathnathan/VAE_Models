@@ -10,6 +10,9 @@ from tensorflow.contrib.tensorboard.plugins import projector
 from tensorflow.python import debug as tf_debug
 import os, sys
 
+tf.set_random_seed(12345)
+np.random.seed(12345)
+
 DEBUG = 0
 
 # Requires Python 3.6+ and Tensorflow 1.1+
@@ -297,9 +300,10 @@ class VAE():
                 # Reshape everything to be compatible with broadcasting for
                 # dimensions of (batch_size, num_clusters, latent_dim)
                 # Except gmm_pi, it is used infrequently and the below reshaping is enough
-                reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
-                exp_gmm_pi = tf.exp(reshaped_gmm_pi)
-                gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
+                #reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
+                #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
+                #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
+                gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters), name='gmm_pi')
 
                 gmm_mu = tf.reshape(self.gmm_mu, (1,self.num_clusters,self.latent_dim),
                         name='gmm_mu')

@@ -27,14 +27,15 @@ hyperParams = {'reconstruct_cost': 'gaussian',
                'alpha': 0,
                'variational': False}
 
-# Create a standard autoencoder by specifying prior=gaussian, alpha=0,
-# variational=False, and reconstruct_cost=gaussian
-AE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='ae_logs')
 
 itrs_per_epoch = dataset_size // hyperParams['batch_size']
 hyperParams['decay_steps'] = 10*itrs_per_epoch
 hyperParams['decay_rate'] = 0.9
-epochs = 10
+epochs = 8
+
+# Create a standard autoencoder by specifying prior=gaussian, alpha=0,
+# variational=False, and reconstruct_cost=gaussian
+AE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='ae_logs')
 
 # Pretrain a simple stacked autoencoder
 for itr in tqdm(range(epochs*itrs_per_epoch)):
@@ -61,13 +62,21 @@ validation_data, validation_labels = mnist.validation.next_batch(1000)
 labels = np.where(validation_labels)[1]
 AE.create_embedding(validation_data, (28,28), labels)
 reconstructions = AE.reconstruct(validation_data)
-fig = plt.figure()
+fig = plt.figure(0)
 numFigs = 8
 for img in range(numFigs):
     axes = fig.add_subplot(numFigs,2,2*img+1)
     axes.imshow(validation_data[img].reshape(28,28))
     axes = fig.add_subplot(numFigs,2,2*img+2)
     axes.imshow(reconstructions[img].reshape(28,28))
+
+counter = 1
+for perp in tqdm([15,20,25,30,35]):
+    mappings = TSNE(n_components=2, perplexity=perp).fit_transform(validation_data)
+    plt.figure(counter)
+    plt.title("Representation with Perplexity = %d" % (perp))
+    plt.scatter(mappings[:,0], mappings[:,1], c=labels)
+    counter += 1
 
 plt.show()
 
