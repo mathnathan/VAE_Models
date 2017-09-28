@@ -23,7 +23,7 @@ encoder = DNN([500,500,2000], tf.nn.relu)
 latency_dim = 10
 decoder = DNN([2000,500,500], tf.nn.relu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 0.0002,
+               'learning_rate': 0.002,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100,
                'num_clusters': 10,
@@ -38,10 +38,16 @@ epochs = 300
 initializers = pickle.load(open('initializers.pkl', 'rb'))
 
 VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, initializers, logdir='vade_logs')
+#VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='vade_logs')
 #pi,mu,std = VaDE.get_gmm_params()
-#print("pis = ", pi)
-#print("mu = ", mu)
-#print("std = ", std)
+#print('init[gmm_pi] = ', np.round(initializers['gmm_pi'], 2))
+#print("pis = ", np.round(pi,2))
+#print('init[gmm_mu] = ', np.round(initializers['gmm_mu'], 2))
+#print("mu = ", np.round(mu,2))
+#print('init[gmm_log_var] = ', np.round(initializers['gmm_log_var'], 2))
+#print('sqrt(exp(init[gmm_log_var])) = ', np.round(np.sqrt(np.exp(initializers['gmm_log_var'])),2))
+#print("std = ", np.round(std,2))
+#sys.exit()
 
 
 if os.path.exists(FILENAME+'.meta'):
@@ -70,7 +76,7 @@ for img in range(numFigs):
     axes.imshow(reconstructions[img].reshape(28,28))
 
 
-if 0:
+if 1:
     counter = 1
     for perp in tqdm([15,20,25,30,35]):
         mappings = TSNE(n_components=2, perplexity=perp).fit_transform(latent_vecs)

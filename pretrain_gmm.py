@@ -19,20 +19,22 @@ encoder = DNN([500,500,2000], tf.nn.relu)
 latency_dim = 10
 decoder = DNN([2000,500,500], tf.nn.relu)
 hyperParams = {'reconstruct_cost': 'gaussian',
-               'learning_rate': 1e-4,
+               'learning_rate': 0.002,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100,
-               'prior': 'gaussian',
                'num_clusters': 10,
+               'prior': 'gaussian',
                'alpha': 0,
                'variational': False}
 
 # Create a standard autoencoder by specifying prior=gaussian, alpha=0,
-# variational=False, and reconstruct_loss=gaussian
+# variational=False, and reconstruct_cost=gaussian
 AE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='ae_logs')
 
 itrs_per_epoch = dataset_size // hyperParams['batch_size']
-epochs = 100
+hyperParams['decay_steps'] = 10*itrs_per_epoch
+hyperParams['decay_rate'] = 0.9
+epochs = 10
 
 # Pretrain a simple stacked autoencoder
 for itr in tqdm(range(epochs*itrs_per_epoch)):
