@@ -7,6 +7,8 @@ import sys, os
 from sklearn.manifold import TSNE
 import pickle
 
+init_types = ['random', 'approx', 'perfect']
+init = init_types[1]
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
@@ -16,6 +18,9 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 datasets = [mnist.train, mnist.test, mnist.validation]
 dataset_size = sum([ds.num_examples for ds in datasets])
 dataset_probs = [ds.num_examples/dataset_size for ds in datasets]
+
+tf.set_random_seed(12345)
+np.random.seed(12345)
 
 FILENAME = 'exps/mnist_vade1/exp'
 input_dim = (28,28)
@@ -35,10 +40,21 @@ hyperParams['decay_steps'] = 10*itrs_per_epoch
 hyperParams['decay_rate'] = 0.9
 epochs = 300
 
-initializers = pickle.load(open('initializers.pkl', 'rb'))
+if init == 'random':
+    VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='vade_logs')
+elif init == 'approx':
+    initializers = pickle.load(open('initializers.pkl', 'rb'))
+    VaDE = model(input_dim, encoder, latency_dim, decoder,
+            hyperParams, initializers, logdir='vade_logs')
+elif init == 'perfect':
+    initializers = {}
+    initializers['gmm_pi'] = np.load('theta_p.npy')
+    initializers['gmm_mu'] = np.load('u_p.npy')
+    initializers['gmm_log_var'] = np.load('lambda_p.npy')
+    VaDE = model(input_dim, encoder, latency_dim, decoder,
+            hyperParams, initializers, logdir='vade_logs')
 
-VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, initializers, logdir='vade_logs')
-#VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='vade_logs')
+
 #pi,mu,std = VaDE.get_gmm_params()
 #print('init[gmm_pi] = ', np.round(initializers['gmm_pi'], 2))
 #print("pis = ", np.round(pi,2))
@@ -47,7 +63,6 @@ VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, initializers
 #print('init[gmm_log_var] = ', np.round(initializers['gmm_log_var'], 2))
 #print('sqrt(exp(init[gmm_log_var])) = ', np.round(np.sqrt(np.exp(initializers['gmm_log_var'])),2))
 #print("std = ", np.round(std,2))
-#sys.exit()
 
 
 if os.path.exists(FILENAME+'.meta'):
@@ -61,7 +76,6 @@ else:
 
 validation_data, validation_labels = mnist.validation.next_batch(1000)
 labels = np.where(validation_labels)[1]
-
 VaDE.create_embedding(validation_data, (28,28), labels)
 
 means, stds = VaDE.transform(validation_data)
@@ -78,7 +92,7 @@ for img in range(numFigs):
 
 if 1:
     counter = 1
-    for perp in tqdm([15,20,25,30,35]):
+    for perp in tqdm([15,20,25,30]):
         mappings = TSNE(n_components=2, perplexity=perp).fit_transform(latent_vecs)
         plt.figure(counter)
         plt.title("Representation with Perplexity = %d" % (perp))

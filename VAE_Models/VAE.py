@@ -10,10 +10,7 @@ from tensorflow.contrib.tensorboard.plugins import projector
 from tensorflow.python import debug as tf_debug
 import os, sys
 
-tf.set_random_seed(12345)
-np.random.seed(12345)
-
-DEBUG = 0
+DEBUG = 1
 
 # Requires Python 3.6+ and Tensorflow 1.1+
 
@@ -187,7 +184,7 @@ class VAE():
                 else:
                     means = np.zeros(self.latent_dim)
                     cov = np.eye(self.latent_dim)
-                    mu_init = np.random.multivariate_normal(means, cov, self.num_clusters)
+                    mu_init = np.random.multivariate_normal(means, cov, self.num_clusters).T
                 #self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
                 self.gmm_mu = tf.Variable(mu_init, dtype=tf.float32)
                 tf.summary.histogram('gmm_mu', self.gmm_mu)
@@ -195,7 +192,7 @@ class VAE():
                 if 'gmm_log_var' in self.initializers:
                     log_var_init = self.initializers['gmm_log_var']
                 else:
-                    log_var_init = np.ones((self.num_clusters, self.latent_dim))
+                    log_var_init = np.ones((self.latent_dim, self.num_clusters))
                 self.gmm_log_var = tf.Variable(log_var_init, dtype=tf.float32)
                 tf.summary.histogram('gmm_log_var', self.gmm_log_var)
 
@@ -215,7 +212,8 @@ class VAE():
             z_mean_bias = tf.Variable(initial_value=z_mean_bias_val,
                     dtype=tf.float32, name='Z_Mean_Bias')
 
-            self.z_mean = encoder_output @ z_mean_weight + z_mean_bias
+            self.z_mean = tf.add(encoder_output @ z_mean_weight, z_mean_bias,
+                    name='z_mean')
 
             z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
@@ -225,7 +223,8 @@ class VAE():
             z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val,
                     dtype=tf.float32, name='Z_Log_Var_Bias')
 
-            self.z_log_var = encoder_output @ z_log_var_weight + z_log_var_bias
+            self.z_log_var = tf.add(encoder_output @ z_log_var_weight,
+                    z_log_var_bias, name='z_log_var')
 
             z_shape = tf.shape(self.z_log_var)
             eps = tf.random_normal(z_shape, 0, 1, dtype=tf.float32)
@@ -247,7 +246,10 @@ class VAE():
                     dtype=tf.float32, name='X_Mean_Bias')
 
             if self.reconstruct_cost == 'bernoulli':
-                self.x_mean = tf.nn.sigmoid(decoder_output @ x_mean_weight + x_mean_bias)
+                tmp_matmul = tf.matmul(decoder_output, x_mean_weight, name='tmp_matmul')
+                tmp_add = tf.add(tmp_matmul, x_mean_bias, name='tmp_add')
+                self.x_mean = tf.nn.sigmoid(tmp_add, name='x_mean')
+                #self.x_mean = tf.nn.sigmoid(decoder_output @ x_mean_weight + x_mean_bias)
             elif self.reconstruct_cost == 'gaussian':
                 self.x_mean = tf.nn.sigmoid(decoder_output @ x_mean_weight + x_mean_bias)
                 # Now add the weights/bias for the sigma reconstruction term
@@ -298,137 +300,101 @@ class VAE():
 
             elif self.prior == 'gmm':
 
-                gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters), name='gmm_pi')
-
-                gmm_mu = tf.reshape(self.gmm_mu, (1,self.num_clusters,self.latent_dim),
-                        name='gmm_mu')
-                gmm_log_var = tf.reshape(self.gmm_log_var,(1,self.num_clusters,self.latent_dim),
-                        name='gmm_log_var')
-                z_mean = tf.reshape(self.z_mean, (self.batch_size, 1,
-                    self.latent_dim), name='z_mean')
-                z_log_var = tf.reshape(self.z_log_var, (self.batch_size, 1,
-                    self.latent_dim), name='z_log_var')
-
-
-
-                if 0:
-                    with tf.name_scope('Determine_p_c_z'):
-                        M = self.batch_size
-                        K = self.num_clusters
-                        J = self.latent_dim
-
-                        z = tf.transpose(tf.transpose( \
-                                    tf.tile(tf.expand_dims(self.z,0),[K,1,1]),[1,0,2]),[0,2,1],
-                                    name='z')
-
-                        u_tensor3 = tf.tile(tf.expand_dims(self.gmm_mu,0),[M,1,1],
-                                name='gmm_mu3')
-                        lambda_tensor3 = tf.tile(tf.expand_dims(self.gmm_log_var,0),[M,1,1],
-                        name='gmm_log_var3')
-                        theta_tensor3 = tf.expand_dims(tf.expand_dims(self.gmm_pi,0),0)
-                        theta_tensor3 = tf.tile(theta_tensor3,[M,K,1], name='gmm_pi3')
-
-                        first_term = tf.log(theta_tensor3)
-                        second_term = -0.5*tf.log(2.0*np.pi*tf.exp(lambda_tensor3))
-                        third_term = -tf.square(z-u_tensor3)/(2.0*lambda_tensor3+1e-10)
-
-                        p_z_c=tf.exp(tf.reduce_sum((first_term+second_term+third_term),axis=1),
-                                name='p_z_c')
-                        self.gamma = p_z_c/(1e-10+tf.reduce_sum(p_z_c,axis=-1,keep_dims=True,
-                        name='gamma')) #Responsibility
-                        tf.summary.histogram('gamma', self.gamma)
-                with tf.name_scope('Determine_p_c_z'):
-
-                    # Reshape everything to be compatible with broadcasting for
-                    # dimensions of (batch_size, num_clusters, latent_dim)
-                    # Except gmm_pi, it is used infrequently and the below reshaping is enough
-                    #reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
-                    #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
-                    #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
-                    gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
-                    gmm_pi = tf.tile(gmm_pi, [self.batch_size,1], name='gmm_pi')
-
-                    gmm_mu = tf.reshape(self.gmm_mu, (1,self.num_clusters,self.latent_dim))
-                    gmm_mu = tf.tile(gmm_mu, [self.batch_size,1,1], name='gmm_mu')
-
-                    gmm_log_var = tf.reshape(self.gmm_log_var,(1,self.num_clusters,self.latent_dim))
-                    gmm_log_var = tf.tile(gmm_log_var, [self.batch_size,1,1], name='gmm_log_var')
-
-                    z = tf.reshape(self.z, (self.batch_size, 1, self.latent_dim))
-                    z = tf.tile(z, [1, self.num_clusters, 1], name='z')
-
-                    z_mean = tf.reshape(self.z_mean, (self.batch_size, 1, self.latent_dim))
-                    z_mean = tf.tile(z_mean, [1, self.num_clusters, 1], name='z_mean')
-
-                    z_log_var = tf.reshape(self.z_log_var, (self.batch_size, 1, self.latent_dim))
-                    z_log_var = tf.tile(z_log_var, [1, self.num_clusters, 1], name='z_log_var')
-
-                    with tf.name_scope('Determine_p_c_z'):
-                        # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
-                        # resulting shape = (batch_size, num_clusters)
-                        tf.summary.histogram('z', z)
-                        p_cz = tf.exp(tf.log(1e-10+gmm_pi)
-                                - 0.5*(tf.reduce_sum(tf.log(2*np.pi)
-                                + gmm_log_var + tf.square(z-gmm_mu)
-                                / tf.exp(gmm_log_var), axis=2)), name='p_cz')
-                        tf.summary.histogram('p_cz', p_cz)
-
-                        # Next we sum over the clusters making the marginal probability p(z)
-                        p_z = tf.reduce_sum(p_cz, axis=1, keep_dims=True)
-                        tf.summary.scalar('p_z', tf.reduce_mean(p_z))
-
-                        # Finally we calculate the resulting posterior p(c|z), in GMM clustering
-                        # literature this is called the 'responsibility' and is denoted by a
-                        # gamma - shape = (batch_size, num_clusters)
-                        self.gamma = tf.divide(p_cz, 1e-10+p_z, name='gamma')
-                        tf.summary.histogram('gamma', self.gamma)
-
-
+                with tf.name_scope('Calculate_Reconstruction_Loss'):
                     if self.reconstruct_cost == 'bernoulli':
-                        with tf.name_scope('Bernoulli_Reconstruction'):
                             # E[log p(x|z)]
                             p_x_z = tf.reduce_mean(tf.reduce_sum(self.network_input *
                                     tf.log(1e-10 + self.x_mean)
                                     + (1.0-self.network_input)
                                     * tf.log(1e-10 + 1.0 - self.x_mean),
-                                    axis=1, name='p_x_z'))
+                                    axis=1), name='p_x_z')
                     elif self.reconstruct_cost == 'gaussian':
-                        with tf.name_scope('Gaussian_Reconstruction'):
                             # E[log p(x|z)]
                             p_x_z = tf.reduce_mean(tf.square(self.network_input-self.x_mean),
                                     name='p_x_z')
 
-                    tf.summary.scalar('E_p_x_z', p_x_z)
+                tf.summary.scalar('E_p_x_z', p_x_z)
 
-                    with tf.name_scope('Total_Cost'):
+                with tf.name_scope('Calculate_p_c_z'):
+                    # Take multiple samples from latency space to calculate the
+                    # q(c|x) = E[p(c|z)]
+                    num_z_samples = 100
+                    new_z_shape = (num_z_samples, self.batch_size, self.latent_dim, 1)
+                    eps = tf.random_normal(new_z_shape, 0, 1, dtype=tf.float32)
+                    z_mean_rs = tf.reshape(self.z_mean, (1,self.batch_size,self.latent_dim,1))
+                    z_log_var_rs = tf.reshape(self.z_log_var, (1,self.batch_size,self.latent_dim,1))
+                    z = z_mean_rs + tf.sqrt(tf.exp(z_log_var_rs)) * eps
 
-                        # E[log p(z|c)]
-                        p_z_c = tf.reduce_mean(-tf.reduce_sum(self.gamma
-                                * (0.5*self.latent_dim*tf.log(2*np.pi)
-                                + 0.5*tf.reduce_sum(gmm_log_var
-                                + tf.exp(z_log_var)/tf.exp(gmm_log_var)
-                                + tf.square(z_mean-gmm_mu)/tf.exp(gmm_log_var),
-                                axis=2)), axis=1))
-                        tf.summary.scalar('E_p_z_c', p_z_c)
+                    # These reshapes are for broadcasting along the
+                    # new z samples axis
+                    pcz_gmm_mu = tf.reshape(self.gmm_mu,
+                            (1,1,self.latent_dim, self.num_clusters))
+                    pcz_gmm_log_var = tf.reshape(self.gmm_mu,
+                            (1,1,self.latent_dim, self.num_clusters))
+                    pcz_gmm_pi = tf.reshape(self.gmm_pi, (1,1,self.num_clusters))
 
-                        # E[log p(c)]
-                        p_c = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(1e-10+gmm_pi), axis=1))
-                        tf.summary.scalar('E_p_c', p_c)
+                    # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
+                    # sum over the latent dim, axis=2
+                    # resulting shape = (num_z_samples, batch_size, num_clusters)
+                    tf.summary.histogram('z', z)
+                    p_cz = tf.exp(tf.log(1e-10+pcz_gmm_pi)
+                            - 0.5*(tf.reduce_sum(tf.log(2*np.pi)
+                            + pcz_gmm_log_var + tf.square(z-pcz_gmm_mu)
+                            / tf.exp(pcz_gmm_log_var), axis=2)), name='p_cz')
+                    tf.summary.histogram('p_cz', p_cz)
 
-                        # E[log q(z|x)]
-                        q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*np.pi)
-                                + tf.reduce_sum(1.0 + z_log_var, axis=2)))
-                        tf.summary.scalar('E_q_z_x', q_z_x)
+                    # Next we sum over the clusters making the marginal probability p(z)
+                    p_z = tf.reduce_sum(p_cz, axis=2, keep_dims=True, name='p_z_var')
+                    tf.summary.scalar('p_z', tf.reduce_mean(p_z))
 
-                        # E[log q(c|x)]
-                        q_c_x = tf.reduce_mean(tf.reduce_sum(tf.reduce_sum(self.gamma
-                                * tf.log(1e-10+self.gamma),1)))
-                        tf.summary.scalar('E_q_c_x', q_c_x)
+                    # Finally we calculate the resulting posterior
+                    # q(c|x)=E[p(c|z)]=E[p(c,z)/sum_c[p(c,z)]]. Take the mean over the
+                    # new z samples axis for the expectation. In GMM clustering
+                    # literature this is called the 'responsibility' and is
+                    # denoted by a gamma - shape = (batch_size, num_clusters)
+                    self.gamma = tf.reduce_mean(p_cz/(1e-10+p_z), axis=0, name='gamma')
+                    tf.summary.histogram('gamma', self.gamma)
 
-                        self.cost = -(p_x_z + p_z_c + p_c - q_z_x - q_c_x)
+                with tf.name_scope('Calculate_KL'):
+                    # Reshape everything to be compatible with broadcasting for
+                    # dimensions of (batch_size, latent_dim, num_clusters)
+                    #reshaped_gmm_pi = tf.reshape(self.gmm_pi, (1,1,self.num_clusters))
+                    #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
+                    #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
+
+                    gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
+                    gmm_mu = tf.reshape(self.gmm_mu, (1,self.latent_dim, self.num_clusters))
+                    gmm_log_var = tf.reshape(self.gmm_log_var,(1,self.latent_dim,self.num_clusters))
+                    z_mean = tf.reshape(self.z_mean, (self.batch_size, self.latent_dim, 1))
+                    z_log_var = tf.reshape(self.z_log_var, (self.batch_size, self.latent_dim, 1))
+
+                    # E[log p(z|c)]
+                    p_z_c = tf.reduce_mean(-0.5*tf.reduce_sum(self.gamma
+                            * (self.latent_dim*tf.log(2*np.pi)
+                            + tf.reduce_sum(gmm_log_var
+                            + tf.exp(z_log_var)/tf.exp(gmm_log_var)
+                            + tf.square(z_mean-gmm_mu)/tf.exp(gmm_log_var),
+                            axis=1)), axis=1))
+                    tf.summary.scalar('E_p_z_c', p_z_c)
+
+                    # E[log p(c)]
+                    p_c = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(1e-10+gmm_pi), axis=1))
+                    tf.summary.scalar('E_p_c', p_c)
+
+                    # E[log q(z|x)]
+                    q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*np.pi)
+                            + tf.reduce_sum(1.0 + z_log_var, axis=1)))
+                    tf.summary.scalar('E_q_z_x', q_z_x)
+
+                    # E[log q(c|x)]
+                    q_c_x = tf.reduce_mean(tf.reduce_sum(self.gamma
+                            * tf.log(1e-10+self.gamma),axis=1))
+                    tf.summary.scalar('E_q_c_x', q_c_x)
+
+                self.cost = -(p_x_z + p_z_c + p_c - q_z_x - q_c_x)
+                self.cost = -p_x_z
 
                 tf.summary.scalar('Cost', self.cost)
-
                 self.reconstruct_loss = -p_x_z
                 tf.summary.scalar('Reconstruction_Error', self.reconstruct_loss)
                 self.regularizer = self.reconstruct_loss - self.cost

@@ -31,7 +31,7 @@ hyperParams = {'reconstruct_cost': 'gaussian',
 itrs_per_epoch = dataset_size // hyperParams['batch_size']
 hyperParams['decay_steps'] = 10*itrs_per_epoch
 hyperParams['decay_rate'] = 0.9
-epochs = 8
+epochs = 20
 
 # Create a standard autoencoder by specifying prior=gaussian, alpha=0,
 # variational=False, and reconstruct_cost=gaussian
@@ -46,14 +46,15 @@ for itr in tqdm(range(epochs*itrs_per_epoch)):
 all_data = []
 for ds in datasets:
     all_data.extend(ds.next_batch(ds.num_examples)[0])
+#latent_vecs = AE.transform(all_data)
 latent_vecs = AE.transform(all_data)
 
 gmm = mixture.GaussianMixture(hyperParams['num_clusters'], covariance_type='diag')
 gmm.fit(latent_vecs)
 initializers = {}
 initializers['gmm_pi'] = gmm.weights_
-initializers['gmm_mu'] = gmm.means_
-initializers['gmm_log_var'] = np.log(gmm.covariances_)
+initializers['gmm_mu'] = gmm.means_.T
+initializers['gmm_log_var'] = np.log(gmm.covariances_).T
 
 pickle_file = open('initializers.pkl', 'wb')
 pickle.dump(initializers, pickle_file)
@@ -61,23 +62,28 @@ pickle.dump(initializers, pickle_file)
 validation_data, validation_labels = mnist.validation.next_batch(1000)
 labels = np.where(validation_labels)[1]
 AE.create_embedding(validation_data, (28,28), labels)
-reconstructions = AE.reconstruct(validation_data)
-fig = plt.figure(0)
-numFigs = 8
-for img in range(numFigs):
-    axes = fig.add_subplot(numFigs,2,2*img+1)
-    axes.imshow(validation_data[img].reshape(28,28))
-    axes = fig.add_subplot(numFigs,2,2*img+2)
-    axes.imshow(reconstructions[img].reshape(28,28))
 
-counter = 1
-for perp in tqdm([15,20,25,30,35]):
-    mappings = TSNE(n_components=2, perplexity=perp).fit_transform(validation_data)
-    plt.figure(counter)
-    plt.title("Representation with Perplexity = %d" % (perp))
-    plt.scatter(mappings[:,0], mappings[:,1], c=labels)
-    counter += 1
+if 0:
+    reconstructions = AE.reconstruct(validation_data)
+    fig = plt.figure(0)
+    numFigs = 8
+    for img in range(numFigs):
+        axes = fig.add_subplot(numFigs,2,2*img+1)
+        axes.imshow(validation_data[img].reshape(28,28))
+        axes = fig.add_subplot(numFigs,2,2*img+2)
+        axes.imshow(reconstructions[img].reshape(28,28))
 
-plt.show()
+    lvs = AE.transform(validation_data)
+    gmm_preds = gmm.predict(lvs)
+    counter = 1
+    for perp in tqdm([15,20,25,30]):
+        mappings = TSNE(n_components=2, perplexity=perp).fit_transform(lvs)
+        plt.figure(counter)
+        plt.title("AE Representation with Perplexity = %d" % (perp))
+        plt.scatter(mappings[:,0], mappings[:,1], c=labels)
+        plt.figure(counter+1)
+        plt.title("GMM Representation with Perplexity = %d" % (perp))
+        plt.scatter(mappings[:,0], mappings[:,1], c=gmm_preds)
+        counter += 2
 
-
+    plt.show()
