@@ -71,6 +71,13 @@ else:
     for itr in tqdm(range(epochs*itrs_per_epoch)):
         ds = np.random.choice(datasets, p=dataset_probs)
         data, labels = ds.next_batch(hyperParams['batch_size'])
+        if itr == 100:
+            targets = (VaDE.eps, VaDE.z_mean_rs, VaDE.z_log_var_rs,
+                       VaDE.z, VaDE.pcz_gmm_mu, VaDE.pcz_gmm_log_var,
+                       VaDE.gmm_pi)
+            eps,zmu,zvar,z,gmu,gvar,gpi = VaDE.sess.run(targets, {VaDE.network_input: data})
+            embed()
+            sys.exit()
         tot_cost, reconstr_loss, KL_loss = VaDE(data)
     VaDE.save(FILENAME)
 

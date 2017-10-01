@@ -10,7 +10,7 @@ from tensorflow.contrib.tensorboard.plugins import projector
 from tensorflow.python import debug as tf_debug
 import os, sys
 
-DEBUG = 1
+DEBUG = 0
 
 # Requires Python 3.6+ and Tensorflow 1.1+
 
@@ -320,27 +320,27 @@ class VAE():
                     # q(c|x) = E[p(c|z)]
                     num_z_samples = 100
                     new_z_shape = (num_z_samples, self.batch_size, self.latent_dim, 1)
-                    eps = tf.random_normal(new_z_shape, 0, 1, dtype=tf.float32)
-                    z_mean_rs = tf.reshape(self.z_mean, (1,self.batch_size,self.latent_dim,1))
-                    z_log_var_rs = tf.reshape(self.z_log_var, (1,self.batch_size,self.latent_dim,1))
-                    z = z_mean_rs + tf.sqrt(tf.exp(z_log_var_rs)) * eps
+                    self.eps = tf.random_normal(new_z_shape, 0, 1, dtype=tf.float32)
+                    self.z_mean_rs = tf.reshape(self.z_mean, (1,self.batch_size,self.latent_dim,1))
+                    self.z_log_var_rs = tf.reshape(self.z_log_var, (1,self.batch_size,self.latent_dim,1))
+                    self.z = self.z_mean_rs + tf.sqrt(tf.exp(self.z_log_var_rs)) * self.eps
+                    tf.summary.histogram('z', self.z)
 
                     # These reshapes are for broadcasting along the
                     # new z samples axis
-                    pcz_gmm_mu = tf.reshape(self.gmm_mu,
+                    self.pcz_gmm_mu = tf.reshape(self.gmm_mu,
                             (1,1,self.latent_dim, self.num_clusters))
-                    pcz_gmm_log_var = tf.reshape(self.gmm_mu,
+                    self.pcz_gmm_log_var = tf.reshape(self.gmm_mu,
                             (1,1,self.latent_dim, self.num_clusters))
-                    pcz_gmm_pi = tf.reshape(self.gmm_pi, (1,1,self.num_clusters))
+                    self.pcz_gmm_pi = tf.reshape(self.gmm_pi, (1,1,self.num_clusters))
 
                     # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
                     # sum over the latent dim, axis=2
                     # resulting shape = (num_z_samples, batch_size, num_clusters)
-                    tf.summary.histogram('z', z)
-                    p_cz = tf.exp(tf.log(1e-10+pcz_gmm_pi)
+                    p_cz = tf.exp(tf.log(1e-10+self.pcz_gmm_pi)
                             - 0.5*(tf.reduce_sum(tf.log(2*np.pi)
-                            + pcz_gmm_log_var + tf.square(z-pcz_gmm_mu)
-                            / tf.exp(pcz_gmm_log_var), axis=2)), name='p_cz')
+                            + self.pcz_gmm_log_var + tf.square(self.z-self.pcz_gmm_mu)
+                            / tf.exp(self.pcz_gmm_log_var), axis=2)), name='p_cz')
                     tf.summary.histogram('p_cz', p_cz)
 
                     # Next we sum over the clusters making the marginal probability p(z)
