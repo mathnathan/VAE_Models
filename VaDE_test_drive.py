@@ -8,7 +8,7 @@ from sklearn.manifold import TSNE
 import pickle
 
 init_types = ['random', 'approx', 'perfect']
-init = init_types[1]
+init = init_types[2]
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
@@ -50,7 +50,7 @@ elif init == 'perfect':
     initializers = {}
     initializers['gmm_pi'] = np.load('theta_p.npy')
     initializers['gmm_mu'] = np.load('u_p.npy')
-    initializers['gmm_log_var'] = np.load('lambda_p.npy')
+    initializers['gmm_log_var'] = np.log(np.load('lambda_p.npy'))
     VaDE = model(input_dim, encoder, latency_dim, decoder,
             hyperParams, initializers, logdir='vade_logs')
 
@@ -71,13 +71,11 @@ else:
     for itr in tqdm(range(epochs*itrs_per_epoch)):
         ds = np.random.choice(datasets, p=dataset_probs)
         data, labels = ds.next_batch(hyperParams['batch_size'])
-        if itr == 100:
-            targets = (VaDE.eps, VaDE.z_mean_rs, VaDE.z_log_var_rs,
-                       VaDE.z, VaDE.pcz_gmm_mu, VaDE.pcz_gmm_log_var,
-                       VaDE.gmm_pi)
-            eps,zmu,zvar,z,gmu,gvar,gpi = VaDE.sess.run(targets, {VaDE.network_input: data})
-            embed()
-            sys.exit()
+        #if itr == 300:
+            #targets = (VaDE.gradients)
+            #grads = VaDE.sess.run(targets,{VaDE.network_input:data})
+            #embed()
+            #sys.exit()
         tot_cost, reconstr_loss, KL_loss = VaDE(data)
     VaDE.save(FILENAME)
 
