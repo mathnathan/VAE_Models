@@ -312,51 +312,6 @@ class VAE():
 
                 tf.summary.scalar('E_p_x_z', p_x_z)
 
-                with tf.name_scope('Calculate_p_c_z'):
-                    # Take multiple samples from latency space to calculate the
-                    # q(c|x) = E[p(c|z)]
-                    num_z_samples = 100
-                    new_z_shape = (num_z_samples, self.batch_size, self.latent_dim, 1)
-                    self.eps = tf.random_normal(new_z_shape, 0, 1, dtype=tf.float32)
-                    self.z_mean_rs = tf.reshape(self.z_mean, (1,self.batch_size,self.latent_dim,1))
-                    tf.summary.histogram('z_mean_rs', self.z_mean_rs)
-                    self.z_log_var_rs = tf.reshape(self.z_log_var, (1,self.batch_size,self.latent_dim,1))
-                    tf.summary.histogram('z_log_var_rs', self.z_log_var_rs)
-                    tf.summary.histogram('exp(z_log_var_rs)', tf.exp(self.z_log_var_rs))
-                    tf.summary.histogram('sqrt(exp(z_log_var_rs))', tf.sqrt(tf.exp(self.z_log_var_rs)))
-                    self.z = self.z_mean_rs + tf.sqrt(tf.exp(self.z_log_var_rs)) * self.eps
-                    tf.summary.histogram('z', self.z)
-
-                    # These reshapes are for broadcasting along the
-                    # new z samples axis
-                    self.pcz_gmm_mu = tf.reshape(self.gmm_mu,
-                            (1,1,self.latent_dim, self.num_clusters))
-                    self.pcz_gmm_log_var = tf.reshape(self.gmm_log_var,
-                            (1,1,self.latent_dim, self.num_clusters))
-                    self.pcz_gmm_pi = tf.reshape(self.gmm_pi, (1,1,self.num_clusters))
-
-                    # First calculate the numerator p(c,z) = p(c)p(z|c) (vectorized)
-                    # sum over the latent dim, axis=2
-                    # resulting shape = (num_z_samples, batch_size, num_clusters)
-                    # ----- ADDED an extra self.latent_dim multiplicative term
-                    # to match the VaDE code.... Super suspicious...
-                    p_cz = tf.exp(self.latent_dim*tf.log(1e-10+self.pcz_gmm_pi)
-                            - 0.5*(tf.reduce_sum(tf.log(2*np.pi)
-                            + self.pcz_gmm_log_var + tf.square(self.z-self.pcz_gmm_mu)
-                            / tf.exp(self.pcz_gmm_log_var), axis=2)), name='p_cz')
-                    tf.summary.histogram('p_cz', p_cz)
-
-                    # Next we sum over the clusters making the marginal probability p(z)
-                    p_z = tf.reduce_sum(p_cz, axis=2, keep_dims=True, name='p_z_var')
-                    tf.summary.scalar('p_z', tf.reduce_mean(p_z))
-
-                    # Finally we calculate the resulting posterior
-                    # q(c|x)=E[p(c|z)]=E[p(c,z)/sum_c[p(c,z)]]. Take the mean over the
-                    # new z samples axis for the expectation. In GMM clustering
-                    # literature this is called the 'responsibility' and is
-                    # denoted by a gamma - shape = (batch_size, num_clusters)
-                    self.gamma = tf.reduce_mean(p_cz/(1e-10+p_z), axis=0, name='gamma')
-                    tf.summary.histogram('gamma', self.gamma)
 
                 with tf.name_scope('Calculate_KL'):
                     # Reshape everything to be compatible with broadcasting for
@@ -365,36 +320,71 @@ class VAE():
                     #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
                     #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
 
-                    gmm_pi = tf.reshape(self.gmm_pi, (1,self.num_clusters))
-                    gmm_mu = tf.reshape(self.gmm_mu, (1,self.latent_dim, self.num_clusters))
-                    gmm_log_var = tf.reshape(self.gmm_log_var,(1,self.latent_dim,self.num_clusters))
-                    z_mean = tf.reshape(self.z_mean, (self.batch_size, self.latent_dim, 1))
-                    z_log_var = tf.reshape(self.z_log_var, (self.batch_size, self.latent_dim, 1))
+                    K = self.num_clusters
+                    M = self.batch_size
+                    J = self.latent_dim
 
-                    # E[log p(z|c)]
-                    p_z_c = tf.reduce_mean(-0.5*tf.reduce_sum(self.gamma
-                            * (self.latent_dim*tf.log(2*np.pi)
-                            + tf.reduce_sum(gmm_log_var
-                            + tf.exp(z_log_var)/tf.exp(gmm_log_var)
-                            + tf.square(z_mean-gmm_mu)/tf.exp(gmm_log_var),
-                            axis=1)), axis=1))
-                    tf.summary.scalar('E_p_z_c', p_z_c)
+                    #z = tf.reduce_mean(self.z,axis=0)
+                    #z = tf.transpose(tf.reshape(z,[M,J]))
 
-                    # E[log p(c)]
-                    p_c = tf.reduce_mean(tf.reduce_sum(self.gamma*tf.log(1e-10+gmm_pi), axis=1))
-                    tf.summary.scalar('E_p_c', p_c)
+                    z_t = tf.transpose(tf.tile(tf.expand_dims(self.z,0),[K,1,1]),[1,2,0]) #
 
-                    # E[log q(z|x)]
-                    q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*np.pi)
-                            + tf.reduce_sum(1.0 + z_log_var, axis=1)))
-                    tf.summary.scalar('E_q_z_x', q_z_x)
+                    z_mean_t = tf.transpose(tf.tile(tf.expand_dims(self.z_mean,0),[K,1,1]),[1,2,0])
 
-                    # E[log q(c|x)]
-                    q_c_x = tf.reduce_mean(tf.reduce_sum(self.gamma
-                            * tf.log(1e-10+self.gamma),axis=1))
-                    tf.summary.scalar('E_q_c_x', q_c_x)
+                    z_log_var_t = tf.transpose(tf.tile(tf.expand_dims(self.z_log_var,0),[K,1,1]),[1,2,0])
 
-                self.cost = -(p_x_z + p_z_c + p_c - q_z_x - q_c_x)
+                    u_tensor3 = tf.tile(tf.expand_dims(self.gmm_mu,0),[M,1,1])
+                    lambda_tensor3 = tf.tile(tf.expand_dims(tf.exp(self.gmm_log_var),0),[M,1,1])
+                    theta_tensor3 = tf.expand_dims(tf.expand_dims(self.gmm_pi,0),0)
+                    theta_tensor3 = tf.tile(theta_tensor3,[M,J,1])
+
+
+
+                    ####################################################################################
+                    # Calculate Gamma
+
+                    first_term = tf.log(theta_tensor3)
+                    second_term = -0.5*tf.log(2*np.pi*lambda_tensor3)
+                    third_term = -tf.square(z_t-u_tensor3)/(2*lambda_tensor3)
+
+
+                    p_z_c=tf.exp(tf.reduce_sum((first_term+second_term+third_term),axis=1))
+
+                    gamma = p_z_c/tf.reduce_sum(p_z_c+1e-15,axis=-1,keep_dims=True) #Responsibility
+
+
+
+
+                    gamma_t = tf.tile(tf.reshape(gamma,[M,1,K]),[1,J,1])
+
+
+
+                    ####################################################################################
+                    #Loss Terms
+
+
+                    p_x_z_tf = -1*tf.reduce_sum((self.network_input * tf.log(self.x_mean+1.0e-10)+
+                                             (1.0-self.network_input)* tf.log(1.0 - self.x_mean+1.0e-10)),axis=1, name='p_x_z')
+
+
+                    #p_x_z_tf = tf.nn.softmax_cross_entropy_with_logits(labels = x, logits=x_decoded_mean)
+
+                    term_2_tf =  tf.reduce_sum(0.5*gamma_t*(self.latent_dim*tf.log(np.pi*2)+tf.log(lambda_tensor3)\
+                                                         +tf.exp(z_log_var_t)/lambda_tensor3
+                                                         +tf.square(z_mean_t-u_tensor3)/lambda_tensor3),axis=(1,2))-0.5*tf.reduce_sum(self.z_log_var+1,axis=-1)
+
+
+
+                    gmm_pi_repeat = tf.tile(tf.expand_dims(self.gmm_pi,0),[M,1])
+
+                    term_3_tf = -1*tf.reduce_sum(tf.log(gmm_pi_repeat)*gamma,axis=-1)
+
+
+                    term_4_tf = tf.reduce_sum(tf.log(gamma+1e-10)*gamma,axis=1)
+
+
+                    self.cost = tf.reduce_mean(p_x_z_tf + term_2_tf + term_3_tf + term_4_tf)
+
                 #self.cost = -p_x_z
 
                 tf.summary.scalar('Cost', self.cost)
@@ -403,13 +393,7 @@ class VAE():
                 self.regularizer = self.reconstruct_loss - self.cost
                 tf.summary.scalar('KL_Loss', self.regularizer)
 
-                self.p_x_z = p_x_z
-                self.p_z_c = p_z_c
-                self.q_z_x = q_z_x
-                self.q_c_x = q_c_x
-                self.p_c = p_c
-                self.p_z = p_z
-                self.p_cz = p_cz
+      
 
                 # User specifies optimizer in the hyperParams argument to constructor
                 #self.train_op = self.optimizer(self.learning_rate).minimize(self.cost,

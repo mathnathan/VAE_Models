@@ -8,7 +8,7 @@ from sklearn.manifold import TSNE
 import pickle
 
 init_types = ['random', 'approx', 'perfect']
-init = init_types[2]
+init = init_types[1]
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
@@ -28,7 +28,7 @@ encoder = DNN([500,500,2000], tf.nn.relu)
 latency_dim = 10
 decoder = DNN([2000,500,500], tf.nn.relu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 0.002,
+               'learning_rate': 0.00002,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100,
                'num_clusters': 10,
