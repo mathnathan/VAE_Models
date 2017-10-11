@@ -8,7 +8,7 @@ from sklearn.manifold import TSNE
 import pickle
 
 init_types = ['random', 'approx', 'perfect']
-init = init_types[2]
+init = init_types[1]
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
