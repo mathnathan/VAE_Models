@@ -7,8 +7,8 @@ import sys, os
 from sklearn.manifold import TSNE
 import pickle
 
-init_types = ['random', 'approx', 'perfect']
-init = init_types[1]
+init_types = ['random', 'approx_nc', 'approx_vade', 'perfect']
+init = init_types[2]
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
@@ -28,7 +28,7 @@ encoder = DNN([500,500,2000], tf.nn.relu)
 latency_dim = 10
 decoder = DNN([2000,500,500], tf.nn.relu)
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 0.00002,
+               'learning_rate': 0.002,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100,
                'num_clusters': 10,
@@ -42,17 +42,27 @@ epochs = 300
 
 if init == 'random':
     VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='vade_logs')
-elif init == 'approx':
+elif init == 'approx_nc':
     initializers = pickle.load(open('initializers.pkl', 'rb'))
+    VaDE = model(input_dim, encoder, latency_dim, decoder,
+            hyperParams, initializers, logdir='vade_logs')
+elif init == 'approx_vade':
+    initializers = {}
+    #initializers['gmm_pi'] = np.load('pretrain_params/theta_p.npy')
+    num_clusts = hyperParams['num_clusters']
+    initializers['gmm_pi'] = np.ones(num_clusts)/num_clusts
+    initializers['gmm_mu'] = np.load('pretrain_params/mu.npy').T
+    initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda.npy').T)
     VaDE = model(input_dim, encoder, latency_dim, decoder,
             hyperParams, initializers, logdir='vade_logs')
 elif init == 'perfect':
     initializers = {}
-    initializers['gmm_pi'] = np.load('theta_p.npy')
-    initializers['gmm_mu'] = np.load('u_p.npy')
-    initializers['gmm_log_var'] = np.log(np.load('lambda_p.npy'))
+    initializers['gmm_pi'] = np.load('pretrain_params/theta_p.npy')
+    initializers['gmm_mu'] = np.load('pretrain_params/u_p.npy').T
+    initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda_p.npy').T)
     VaDE = model(input_dim, encoder, latency_dim, decoder,
             hyperParams, initializers, logdir='vade_logs')
+
 
 
 #pi,mu,std = VaDE.get_gmm_params()
