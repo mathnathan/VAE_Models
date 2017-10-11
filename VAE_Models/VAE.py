@@ -238,7 +238,7 @@ class VAE():
                     z_log_var_bias, name='z_log_var')
 
             z_shape = tf.shape(self.z_log_var)
-            eps = tf.random_normal(z_shape, 0, 1, dtype=PRECISION)
+            eps = tf.truncated_normal(z_shape, 0, 1, dtype=PRECISION)
             self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps if self.variational else self.z_mean
 
             # Construct the decoder network and get its output
@@ -331,9 +331,12 @@ class VAE():
                     #exp_gmm_pi = tf.exp(reshaped_gmm_pi)
                     #gmm_pi = tf.divide(exp_gmm_pi, tf.reduce_sum(exp_gmm_pi, axis=1), name='gmm_pi')
 
-                    K = self.num_clusters
                     M = self.batch_size
                     J = self.latent_dim
+                    K = self.num_clusters
+
+                    # Super Important Thing
+                    #gmm_pi = tf.exp(self.gmm_pi) / tf.reduce_sum(tf.exp(self.gmm_pi))
 
                     #z = tf.reduce_mean(self.z,axis=0)
                     #z = tf.transpose(tf.reshape(z,[M,J]))
@@ -361,13 +364,15 @@ class VAE():
 
                     p_z_c=tf.exp(tf.reduce_sum((first_term+second_term+third_term),axis=1))
 
-                    gamma = p_z_c/tf.reduce_sum(p_z_c,axis=-1,keep_dims=True) #Responsibility
-                    tf.summary.histogram('gamma_hist', gamma)
+                    #gamma = p_z_c/tf.reduce_sum(p_z_c,axis=-1,keep_dims=True) #Responsibility
+                    p_z_c_mean = p_z_c/tf.reduce_mean(p_z_c)
+                    self.gamma = (p_z_c_mean)/tf.reduce_sum((p_z_c_mean),axis=-1,keep_dims=True) #Responsibility
+                    tf.summary.histogram('gamma_hist', self.gamma)
 
 
 
 
-                    gamma_t = tf.tile(tf.reshape(gamma,[M,1,K]),[1,J,1])
+                    gamma_t = tf.tile(tf.reshape(self.gamma,[M,1,K]),[1,J,1])
 
 
 
@@ -390,10 +395,10 @@ class VAE():
 
                     gmm_pi_repeat = tf.tile(tf.expand_dims(self.gmm_pi,0),[M,1])
 
-                    term_3_tf = -1*tf.reduce_sum(tf.log(gmm_pi_repeat)*gamma,axis=-1)
+                    term_3_tf = -1*tf.reduce_sum(tf.log(gmm_pi_repeat)*self.gamma,axis=-1)
 
 
-                    term_4_tf = tf.reduce_sum(tf.log(gamma+1e-10)*gamma,axis=1)
+                    term_4_tf = tf.reduce_sum(tf.log(self.gamma+1e-10)*self.gamma,axis=1)
 
 
                     self.cost = tf.reduce_mean(p_x_z_tf + term_2_tf + term_3_tf + term_4_tf)

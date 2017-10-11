@@ -4,6 +4,7 @@ import tensorflow as tf
 from IPython import embed
 import sys
 
+PRECISION = tf.float64
 
 class Neural_Network():
     """Base class for various neural networks (consider using
@@ -24,7 +25,7 @@ class Neural_Network():
             size = np.sqrt(6.0/(input_size + output_size))
             return tf.random_uniform(shape, minval=-size,
                                      maxval=size,
-                                     dtype=tf.float32)
+                                     dtype=PRECISION)
 
 
 class DNN(Neural_Network):
@@ -60,11 +61,11 @@ class DNN(Neural_Network):
             for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
                 init_weight_val = self.xavier_init((num_prev_nodes, num_next_nodes))
                 weight = tf.Variable(initial_value=init_weight_val,
-                        dtype=tf.float32, name='Weight')
+                        dtype=PRECISION, name='Weight')
                 self.weights.append(weight)
                 init_bias_val = np.zeros((1,num_next_nodes))
                 bias = tf.Variable(initial_value=init_bias_val,
-                        dtype=tf.float32, name='Bias')
+                        dtype=PRECISION, name='Bias')
                 self.biases.append(bias)
                 num_prev_nodes = num_next_nodes
                 current_input = func(current_input @ weight + bias)
@@ -131,7 +132,7 @@ class CNN(Neural_Network):
                 prevChannels = numChannels
 
         fcWeights = tf.Variable(self.xavier_init([img_h, img_w,
-            prevChannels, self.fc_layer_size]), dtype=tf.float32,
+            prevChannels, self.fc_layer_size]), dtype=PRECISION,
             name='fc_weights')
         fcBias = tf.Variable(tf.zeros([self.fc_layer_size]),
                 name='fc_bias')
@@ -203,7 +204,7 @@ class CNN3D(Neural_Network):
                 prevChannels = numChannels
 
         fcWeights = tf.Variable(self.xavier_init([img_d, img_h, img_w,
-            prevChannels, self.fc_layer_size]), dtype=tf.float32,
+            prevChannels, self.fc_layer_size]), dtype=PRECISION,
             name='fc_weights')
         fcBias = tf.Variable(tf.zeros([self.fc_layer_size]),
                 name='fc_bias')
