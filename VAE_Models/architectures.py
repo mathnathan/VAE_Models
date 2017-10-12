@@ -24,7 +24,7 @@ class Neural_Network():
             size = np.sqrt(6.0/(input_size + output_size))
             return tf.random_uniform(shape, minval=-size,
                                      maxval=size,
-                                     dtype=tf.float32)
+                                     dtype=self.dtype)
 
 
 class DNN(Neural_Network):
@@ -51,20 +51,21 @@ class DNN(Neural_Network):
         self.transfer_funcs = transfer_funcs
 
 
-    def build_graph(self, network_input, input_shape, scope='DNN'):
+    def build_graph(self, network_input, input_shape, dtype=tf.float32, scope='DNN'):
 
         with tf.name_scope(scope):
+            self.dtype = dtype
             num_prev_nodes = np.prod(input_shape)
             # Currently I am not keeping track of the output between layers
             current_input = network_input
             for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
                 init_weight_val = self.xavier_init((num_prev_nodes, num_next_nodes))
                 weight = tf.Variable(initial_value=init_weight_val,
-                        dtype=tf.float32, name='Weight')
+                        dtype=self.dtype, name='Weight')
                 self.weights.append(weight)
                 init_bias_val = np.zeros((1,num_next_nodes))
                 bias = tf.Variable(initial_value=init_bias_val,
-                        dtype=tf.float32, name='Bias')
+                        dtype=self.dtype, name='Bias')
                 self.biases.append(bias)
                 num_prev_nodes = num_next_nodes
                 current_input = func(current_input @ weight + bias)
@@ -118,10 +119,11 @@ class CNN(Neural_Network):
         return conv_output
 
 
-    def build_graph(self, network_input, input_shape, scope='CNN'):
+    def build_graph(self, network_input, input_shape, dtype=tf.float32, scope='CNN'):
         """The documentation for the build_graph routine of the CNN class. To
         come..."""
 
+        self.dtype = dtype
         img_h, img_w = input_shape
         current_input = tf.reshape(network_input, (-1,img_h, img_w,1))
         prevChannels = 1
@@ -131,9 +133,8 @@ class CNN(Neural_Network):
                 prevChannels = numChannels
 
         fcWeights = tf.Variable(self.xavier_init([img_h, img_w,
-            prevChannels, self.fc_layer_size]), dtype=tf.float32,
-            name='fc_weights')
-        fcBias = tf.Variable(tf.zeros([self.fc_layer_size]),
+            prevChannels, self.fc_layer_size]), name='fc_weights')
+        fcBias = tf.Variable(tf.zeros([self.fc_layer_size]), dtype=self.dtype,
                 name='fc_bias')
 
         fcOutput = tf.nn.elu(tf.add(tf.tensordot(current_input, fcWeights,
@@ -190,10 +191,11 @@ class CNN3D(Neural_Network):
         return conv_output
 
 
-    def build_graph(self, network_input, input_shape, scope='3DCNN'):
+    def build_graph(self, network_input, input_shape, dtype=tf.float32, scope='3DCNN'):
         """The documentation for the build_graph routine of the CNN class. To
         come..."""
 
+        self.dtype = dtype
         img_d, img_h, img_w = input_shape
         current_input = tf.reshape(network_input, (-1, img_d, img_h, img_w, 1))
         prevChannels = 1
@@ -203,9 +205,8 @@ class CNN3D(Neural_Network):
                 prevChannels = numChannels
 
         fcWeights = tf.Variable(self.xavier_init([img_d, img_h, img_w,
-            prevChannels, self.fc_layer_size]), dtype=tf.float32,
-            name='fc_weights')
-        fcBias = tf.Variable(tf.zeros([self.fc_layer_size]),
+            prevChannels, self.fc_layer_size]), name='fc_weights')
+        fcBias = tf.Variable(tf.zeros([self.fc_layer_size]), dtype=self.dtype,
                 name='fc_bias')
 
         fcOutput = tf.nn.elu(tf.add(tf.tensordot(current_input, fcWeights,
@@ -256,10 +257,11 @@ class DCNN(Neural_Network):
         return deconv_output
 
 
-    def build_graph(self, network_input, input_shape, scope='CNN'):
+    def build_graph(self, network_input, input_shape, dtype=tf.float32, scope='CNN'):
         """The documentation for the build_graph routine of the CNN class. To
         come..."""
 
+        self.dtype = dtype
         current_input = tf.reshape(network_input, (-1,input_shape,1,1))
         prevChannels = 1
         input_height = input_shape

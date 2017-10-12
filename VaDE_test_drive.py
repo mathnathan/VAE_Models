@@ -7,8 +7,19 @@ import sys, os
 from sklearn.manifold import TSNE
 import pickle
 
-init_types = ['random', 'approx', 'perfect']
-init = init_types[1]
+def cluster_acc(Y_pred, Y):
+  from sklearn.utils.linear_assignment_ import linear_assignment
+  assert Y_pred.size == Y.size
+  D = max(Y_pred.max(), Y.max())+1
+  w = np.zeros((D,D), dtype=np.int64)
+  for i in range(Y_pred.size):
+    w[Y_pred[i], Y[i]] += 1
+  ind = linear_assignment(w.max() - w)
+  return sum([w[i,j] for i,j in ind])*1.0/Y_pred.size,ind
+
+
+init_types = ['random', 'approx_nc', 'approx_vade', 'perfect']
+init = init_types[2]
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
@@ -42,17 +53,27 @@ epochs = 300
 
 if init == 'random':
     VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='vade_logs')
-elif init == 'approx':
+elif init == 'approx_nc':
     initializers = pickle.load(open('initializers.pkl', 'rb'))
+    VaDE = model(input_dim, encoder, latency_dim, decoder,
+            hyperParams, initializers, logdir='vade_logs')
+elif init == 'approx_vade':
+    initializers = {}
+    #initializers['gmm_pi'] = np.load('pretrain_params/theta_p.npy')
+    num_clusts = hyperParams['num_clusters']
+    initializers['gmm_pi'] = np.ones(num_clusts)/num_clusts
+    initializers['gmm_mu'] = np.load('pretrain_params/mu.npy').T
+    initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda.npy').T)
     VaDE = model(input_dim, encoder, latency_dim, decoder,
             hyperParams, initializers, logdir='vade_logs')
 elif init == 'perfect':
     initializers = {}
-    initializers['gmm_pi'] = np.load('theta_p.npy')
-    initializers['gmm_mu'] = np.load('u_p.npy')
-    initializers['gmm_log_var'] = np.log(np.load('lambda_p.npy'))
+    initializers['gmm_pi'] = np.load('pretrain_params/theta_p.npy')
+    initializers['gmm_mu'] = np.load('pretrain_params/u_p.npy')
+    initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda_p.npy'))
     VaDE = model(input_dim, encoder, latency_dim, decoder,
             hyperParams, initializers, logdir='vade_logs')
+
 
 
 #pi,mu,std = VaDE.get_gmm_params()
@@ -71,11 +92,12 @@ else:
     for itr in tqdm(range(epochs*itrs_per_epoch)):
         ds = np.random.choice(datasets, p=dataset_probs)
         data, labels = ds.next_batch(hyperParams['batch_size'])
-        #if itr == 300:
-            #targets = (VaDE.gradients)
-            #grads = VaDE.sess.run(targets,{VaDE.network_input:data})
-            #embed()
-            #sys.exit()
+        if itr % itrs_per_epoch == 0:
+
+            enumerate_labels = np.where(labels)[1]
+            preds = VaDE.predict_clusters(data)
+            acc = cluster_acc(np.argmax(preds,axis=1), enumerate_labels)
+            print("Accuracy: ", acc[0])
         tot_cost, reconstr_loss, KL_loss = VaDE(data)
     VaDE.save(FILENAME)
 

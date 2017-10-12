@@ -11,6 +11,7 @@ from tensorflow.python import debug as tf_debug
 import os, sys
 
 DEBUG = 0
+DTYPE = tf.float64
 
 # Requires Python 3.6+ and Tensorflow 1.1+
 
@@ -35,7 +36,8 @@ class VAE():
 
         self.CHECKPOINT_COUNTER = 0
         self.CALL_COUNTER = 0
-        self.input_dim = input_shape
+        self.PI = tf.constant(np.pi, dtype=DTYPE)
+       	self.input_dim = input_shape
         self.num_input_vals = np.prod(input_shape)
         self.encoder = encoder
         self.latent_dim = latent_dim
@@ -153,7 +155,8 @@ class VAE():
             self.summary_writer.add_summary(summary, self.CALL_COUNTER)
         else:
             self.sess.run(self.vae_train_op, feed_dict=input_dict)
-            targets = (self.cost, self.reconstruct_loss, self.regularizer, self.gmm_train_op)
+            #targets = (self.cost, self.reconstruct_loss, self.regularizer, self.gmm_train_op)
+            targets = (self.cost, self.reconstruct_loss, self.regularizer, self.vae_train_op)
             cost, reconstruct_loss, regularizer, _ = \
                 self.sess.run(targets, feed_dict=input_dict)
 
@@ -165,7 +168,7 @@ class VAE():
 
 
         print("\nBuilding VAE")
-        self.network_input = tf.placeholder(tf.float32, name='Input')
+        self.network_input = tf.placeholder(DTYPE, name='Input')
 
         with tf.name_scope('VAE'):
 
@@ -180,7 +183,7 @@ class VAE():
                     pi_init = self.initializers['gmm_pi']
                 else:
                     pi_init = np.ones(self.num_clusters)/self.num_clusters
-                self.gmm_pi = tf.Variable(pi_init, dtype=tf.float32, name='gmm_pi')
+                self.gmm_pi = tf.Variable(pi_init, dtype=DTYPE, name='gmm_pi')
                 tf.summary.histogram('gmm_pi_hist', self.gmm_pi)
 
                 if 'gmm_mu' in self.initializers:
@@ -189,21 +192,21 @@ class VAE():
                     means = np.zeros(self.latent_dim)
                     cov = np.eye(self.latent_dim)
                     mu_init = np.random.multivariate_normal(means, cov, self.num_clusters).T
-                #self.gmm_mu = tf.Variable(mu_init.T, dtype=tf.float32)
-                self.gmm_mu = tf.Variable(mu_init, dtype=tf.float32, name='gmm_mu')
+                #self.gmm_mu = tf.Variable(mu_init.T, dtype=DTYPE)
+                self.gmm_mu = tf.Variable(mu_init, dtype=DTYPE, name='gmm_mu')
                 tf.summary.histogram('gmm_mu_hist', self.gmm_mu)
 
                 if 'gmm_log_var' in self.initializers:
                     log_var_init = self.initializers['gmm_log_var']
                 else:
                     log_var_init = np.ones((self.latent_dim, self.num_clusters))
-                self.gmm_log_var = tf.Variable(log_var_init, dtype=tf.float32, name='gmm_log_var')
+                self.gmm_log_var = tf.Variable(log_var_init, dtype=DTYPE, name='gmm_log_var')
                 tf.summary.histogram('gmm_log_var_hist', self.gmm_log_var)
 
 
             # Construct the encoder network and get its output
             encoder_output = self.encoder.build_graph(self.network_input,
-                    self.input_dim, scope='Encoder')
+                    self.input_dim, DTYPE, scope='Encoder')
             #enc_output_dim = encoder_output.shape.as_list()[1]
             enc_output_dim = self.encoder.get_output_dim()
 
@@ -211,10 +214,10 @@ class VAE():
             z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
             z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
-                    dtype=tf.float32, name='Z_Mean_Weight')
+                    dtype=DTYPE, name='Z_Mean_Weight')
             z_mean_bias_val = np.zeros((1,self.latent_dim))
             z_mean_bias = tf.Variable(initial_value=z_mean_bias_val,
-                    dtype=tf.float32, name='Z_Mean_Bias')
+                    dtype=DTYPE, name='Z_Mean_Bias')
 
             self.z_mean = tf.add(encoder_output @ z_mean_weight, z_mean_bias,
                     name='z_mean')
@@ -222,21 +225,21 @@ class VAE():
             z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
             z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val,
-                    dtype=tf.float32, name='Z_Log_Var_Weight')
+                    dtype=DTYPE, name='Z_Log_Var_Weight')
             z_log_var_bias_val = np.zeros((1,self.latent_dim))
             z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val,
-                    dtype=tf.float32, name='Z_Log_Var_Bias')
+                    dtype=DTYPE, name='Z_Log_Var_Bias')
 
             self.z_log_var = tf.add(encoder_output @ z_log_var_weight,
                     z_log_var_bias, name='z_log_var')
 
             z_shape = tf.shape(self.z_log_var)
-            eps = tf.random_normal(z_shape, 0, 1, dtype=tf.float32)
+            eps = tf.random_normal(z_shape, 0, 1, dtype=DTYPE)
             self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps if self.variational else self.z_mean
 
             # Construct the decoder network and get its output
             decoder_output = self.decoder.build_graph(self.z, self.latent_dim,
-                    scope='Decoder')
+                    DTYPE, scope='Decoder')
             #dec_output_dim = decoder_output.shape.as_list()[1]
             dec_output_dim = self.decoder.get_output_dim()
 
@@ -244,10 +247,10 @@ class VAE():
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
                 self.num_input_vals))
             x_mean_weight = tf.Variable(initial_value=x_mean_weight_val,
-                    dtype=tf.float32, name='X_Mean_Weight')
+                    dtype=DTYPE, name='X_Mean_Weight')
             x_mean_bias_val = np.zeros((1,self.num_input_vals))
             x_mean_bias = tf.Variable(initial_value=x_mean_bias_val,
-                    dtype=tf.float32, name='X_Mean_Bias')
+                    dtype=DTYPE, name='X_Mean_Bias')
 
             if self.reconstruct_cost == 'bernoulli':
                 tmp_matmul = tf.matmul(decoder_output, x_mean_weight, name='tmp_matmul')
@@ -259,9 +262,9 @@ class VAE():
                 # Now add the weights/bias for the sigma reconstruction term
                 x_sigma_weight_val = self.encoder.xavier_init((dec_output_dim,
                     self.num_input_vals))
-                x_sigma_weight = tf.Variable(initial_value=x_sigma_weight_val, dtype=tf.float32)
+                x_sigma_weight = tf.Variable(initial_value=x_sigma_weight_val, dtype=DTYPE)
                 x_sigma_bias_val = np.zeros(self.num_input_vals)
-                x_sigma_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=tf.float32)
+                x_sigma_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=DTYPE)
                 self.x_sigma = tf.nn.sigmoid(decoder_output @ x_sigma_weight +
                         x_sigma_bias)
 
@@ -315,38 +318,12 @@ class VAE():
                 tf.summary.scalar('E_p_x_z', p_x_z)
 
                 with tf.name_scope('Calculate_p_c_z'):
-                    K = self.num_clusters
-                    M = self.batch_size
-                    J = self.latent_dim
-                    z_t = tf.transpose(tf.tile(tf.expand_dims(self.z,0),[K,1,1]),[1,2,0]) #
-                    z_mean_t = tf.transpose(tf.tile(tf.expand_dims(self.z_mean,0),[K,1,1]),[1,2,0])
-                    z_log_var_t = tf.transpose(tf.tile(tf.expand_dims(self.z_log_var,0),[K,1,1]),[1,2,0])
-                    u_tensor3 = tf.tile(tf.expand_dims(self.gmm_mu,0),[M,1,1])
-                    lambda_tensor3 = tf.tile(tf.expand_dims(tf.exp(self.gmm_log_var),0),[M,1,1])
-                    theta_tensor3 = tf.expand_dims(tf.expand_dims(self.gmm_pi,0),0)
-                    theta_tensor3 = tf.tile(theta_tensor3,[M,J,1])
-                    first_term = tf.log(theta_tensor3)
-                    second_term = -0.5*tf.log(2*np.pi*lambda_tensor3)
-                    third_term = -tf.square(z_t-u_tensor3)/(2*lambda_tensor3)
-                    p_z_c=tf.exp(tf.reduce_sum((first_term+second_term+third_term),axis=1))
-                    gamma = p_z_c/tf.reduce_sum(p_z_c+1e-15,axis=-1,keep_dims=True) #Responsibility
-                    gamma_t = tf.tile(tf.reshape(gamma,[M,1,K]),[1,J,1])
-                    p_x_z_tf = -1*tf.reduce_sum((self.network_input * tf.log(self.x_mean+1.0e-10)+
-                                    (1.0-self.network_input)* tf.log(1.0 - self.x_mean+1.0e-10)),axis=1, name='p_x_z')
-                    term_2_tf =  tf.reduce_sum(0.5*gamma_t*(self.latent_dim*tf.log(np.pi*2)+tf.log(lambda_tensor3)\
-                                                    +tf.exp(z_log_var_t)/lambda_tensor3
-                                                    +tf.square(z_mean_t-u_tensor3)/lambda_tensor3),axis=(1,2))-0.5*tf.reduce_sum(self.z_log_var+1,axis=-1)
-                    gmm_pi_repeat = tf.tile(tf.expand_dims(self.gmm_pi,0),[M,1])
-                    term_3_tf = -1*tf.reduce_sum(tf.log(gmm_pi_repeat)*gamma,axis=-1)
-                    term_4_tf = tf.reduce_sum(tf.log(gamma+1e-10)*gamma,axis=1)
-                    self.cost = tf.reduce_mean(p_x_z_tf + term_2_tf + term_3_tf + term_4_tf)
 
-                    """
                     # Take multiple samples from latency space to calculate the
                     # q(c|x) = E[p(c|z)]
                     num_z_samples = 100
                     new_z_shape = (num_z_samples, self.batch_size, self.latent_dim, 1)
-                    self.eps = tf.random_normal(new_z_shape, 0, 1, dtype=tf.float32)
+                    self.eps = tf.random_normal(new_z_shape, 0, 1, dtype=DTYPE)
                     self.z_mean_rs = tf.reshape(self.z_mean, (1,self.batch_size,self.latent_dim,1))
                     tf.summary.histogram('z_mean_rs', self.z_mean_rs)
                     self.z_log_var_rs = tf.reshape(self.z_log_var, (1,self.batch_size,self.latent_dim,1))
@@ -370,7 +347,7 @@ class VAE():
                     # ----- ADDED an extra self.latent_dim multiplicative term
                     # to match the VaDE code.... Super suspicious...
                     p_cz = tf.exp(self.latent_dim*tf.log(1e-10+self.pcz_gmm_pi)
-                            - 0.5*(tf.reduce_sum(tf.log(2*np.pi)
+                            - 0.5*(tf.reduce_sum(tf.log(2*self.PI)
                             + self.pcz_gmm_log_var + tf.square(self.z-self.pcz_gmm_mu)
                             / tf.exp(self.pcz_gmm_log_var), axis=2)), name='p_cz')
                     tf.summary.histogram('p_cz', p_cz)
@@ -402,7 +379,7 @@ class VAE():
 
                     # E[log p(z|c)]
                     p_z_c = tf.reduce_mean(-0.5*tf.reduce_sum(self.gamma
-                            * (self.latent_dim*tf.log(2*np.pi)
+                            * (self.latent_dim*tf.log(2*self.PI)
                             + tf.reduce_sum(gmm_log_var
                             + tf.exp(z_log_var)/tf.exp(gmm_log_var)
                             + tf.square(z_mean-gmm_mu)/tf.exp(gmm_log_var),
@@ -414,7 +391,7 @@ class VAE():
                     tf.summary.scalar('E_p_c', p_c)
 
                     # E[log q(z|x)]
-                    q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*np.pi)
+                    q_z_x = tf.reduce_mean(-0.5*(self.latent_dim*tf.log(2*self.PI)
                             + tf.reduce_sum(1.0 + z_log_var, axis=1)))
                     tf.summary.scalar('E_q_z_x', q_z_x)
 
@@ -424,8 +401,6 @@ class VAE():
                     tf.summary.scalar('E_q_c_x', q_c_x)
 
                 self.cost = -(p_x_z + p_z_c + p_c - q_z_x - q_c_x)
-                #self.cost = -p_x_z
-                """
 
                 tf.summary.scalar('Cost', self.cost)
                 self.reconstruct_loss = -p_x_z
@@ -475,7 +450,7 @@ class VAE():
                 input_dict = {self.network_input: network_input}
                 targets = (self.x_mean, self.x_sigma)
                 mean, sig = self.sess.run(targets, feed_dict=input_dict)
-                eps = tf.random_normal(tf.shape(sig), dtype=tf.float32)
+                eps = tf.random_normal(tf.shape(sig), dtype=DTYPE)
                 recon = mean
             return recon
 
