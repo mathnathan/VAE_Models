@@ -362,7 +362,7 @@ class VAE():
 
                     first_term = tf.log(theta_tensor3)
                     second_term = -0.5*tf.log(2*np.pi*lambda_tensor3)
-                    third_term = -tf_huber(z_t-u_tensor3)/lambda_tensor3
+                    third_term = -tf_huber(z_t-u_tensor3,delta=0.02)/lambda_tensor3
 
 
                     p_z_c=tf.exp(tf.reduce_sum((first_term+second_term+third_term),axis=1))
