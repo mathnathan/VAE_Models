@@ -18,6 +18,28 @@ def cluster_acc(Y_pred, Y):
   return sum([w[i,j] for i,j in ind])*1.0/Y_pred.size,ind
 
 
+def load_weights_from_file(pretrain_path):
+    encoder_weight_names= ['encoder{}_W.npy'.format(i) for i in range(1,4)]
+    encoder_bias_names = ['encoder{}_b.npy'.format(i) for i in range(1,4)]
+    decoder_weight_names = ['decoder{}_W.npy'.format(i) for i in range(1,4)]
+    decoder_bias_names = ['decoder{}_b.npy'.format(i) for i in range(1,4)]
+    encoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_weight_names]
+    encoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_bias_names]
+    decoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_weight_names]
+    decoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_bias_names]
+    z_mean_weights = np.load(os.path.join(pretrain_path,'encoder4_W.npy')) 
+    z_mean_bias =  np.load(os.path.join(pretrain_path,'encoder4_b.npy')) 
+    x_mean_weights = np.load(os.path.join(pretrain_path,'decoder4_W.npy')) 
+    x_mean_bias = np.load(os.path.join(pretrain_path,'decoder4_b.npy')) 
+
+
+    return(encoder_weights,encoder_biases,decoder_weights,
+      decoder_biases,z_mean_weights,z_mean_bias,x_mean_weights,x_mean_bias)
+
+
+
+
+
 init_types = ['random', 'approx_nc', 'approx_vade', 'perfect']
 init = init_types[2]
 # Choose standard VAE or VaDE
@@ -33,11 +55,15 @@ dataset_probs = [ds.num_examples/dataset_size for ds in datasets]
 tf.set_random_seed(12345)
 np.random.seed(12345)
 
+PRETRAIN_PATH = "pretrain_params/"
+weights_biases = load_weights_from_file(PRETRAIN_PATH)
+
 FILENAME = 'exps/mnist_vade1/exp'
 input_dim = (28,28)
-encoder = DNN([500,500,2000], tf.nn.relu)
+encoder = DNN([500,500,2000], tf.nn.relu,initial_weights = weights_biases[0],initial_biases =weights_biases[1] )
 latency_dim = 10
-decoder = DNN([2000,500,500], tf.nn.relu)
+decoder = DNN([2000,500,500], tf.nn.relu,initial_weights = weights_biases[2],initial_biases = weights_biases[3])
+
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 0.002,
                'optimizer': tf.train.AdamOptimizer,
@@ -49,7 +75,7 @@ hyperParams = {'reconstruct_cost': 'bernoulli',
 itrs_per_epoch = dataset_size // hyperParams['batch_size']
 hyperParams['decay_steps'] = 10*itrs_per_epoch
 hyperParams['decay_rate'] = 0.9
-epochs = 300
+epochs = 3000
 
 if init == 'random':
     VaDE = model(input_dim, encoder, latency_dim, decoder, hyperParams, logdir='vade_logs')
@@ -65,7 +91,10 @@ elif init == 'approx_vade':
     initializers['gmm_mu'] = np.load('pretrain_params/mu.npy').T
     initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda.npy').T)
     VaDE = model(input_dim, encoder, latency_dim, decoder,
-            hyperParams, initializers, logdir='vade_logs')
+            hyperParams, initializers,
+            z_mean_weight_bias = [weights_biases[4],weights_biases[5]],
+            x_mean_weight_bias = [weights_biases[6],weights_biases[7]], 
+            logdir='vade_logs')
 elif init == 'perfect':
     initializers = {}
     initializers['gmm_pi'] = np.load('pretrain_params/theta_p.npy')

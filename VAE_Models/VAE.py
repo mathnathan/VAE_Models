@@ -32,13 +32,15 @@ class VAE():
 
 
     def __init__(self, input_shape, encoder, latent_dim, decoder, hyperParams,
-            initializers={}, logdir=None):
+            initializers={},z_mean_weight_bias = None,x_mean_weight_bias = None, logdir=None):
 
         self.CHECKPOINT_COUNTER = 0
         self.CALL_COUNTER = 0
         self.PI = tf.constant(np.pi, dtype=PRECISION)
         self.input_dim = input_shape
         self.num_input_vals = np.prod(input_shape)
+        self.z_mean_weight_bias = z_mean_weight_bias
+        self.x_mean_weight_bias = x_mean_weight_bias
         self.encoder = encoder
         self.latent_dim = latent_dim
         self.decoder = decoder
@@ -214,23 +216,40 @@ class VAE():
             #enc_output_dim = encoder_output.shape.as_list()[1]
             enc_output_dim = self.encoder.get_output_dim()
 
-            # Now add the weights/bias for the mean and var of the latency dim
-            z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
+
+            # load z_mean and z-var initalizers (currently one in the same because of keras implementation)
+
+            if self.z_mean_weight_bias:
+                z_mean_weight_val = self.z_mean_weight_bias[0]
+                z_mean_bias_val = self.z_mean_weight_bias[1]
+            else:
+                z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
+                z_mean_bias_val = np.zeros((1,self.latent_dim))
+
+
+            if self.z_mean_weight_bias:
+                z_log_var_weight_val = self.z_mean_weight_bias[0]
+                z_log_var_bias_val = self.z_mean_weight_bias[1]
+            else:
+                z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
+                self.latent_dim))
+                z_log_var_bias_val = np.zeros((1,self.latent_dim))
+
+
+
+            # Now add the weights/bias for the mean and var of the latency dim
             z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
                     dtype=PRECISION, name='Z_Mean_Weight')
-            z_mean_bias_val = np.zeros((1,self.latent_dim))
             z_mean_bias = tf.Variable(initial_value=z_mean_bias_val,
                     dtype=PRECISION, name='Z_Mean_Bias')
 
             self.z_mean = tf.add(encoder_output @ z_mean_weight, z_mean_bias,
                     name='z_mean')
 
-            z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
-                self.latent_dim))
+ 
             z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val,
                     dtype=PRECISION, name='Z_Log_Var_Weight')
-            z_log_var_bias_val = np.zeros((1,self.latent_dim))
             z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val,
                     dtype=PRECISION, name='Z_Log_Var_Bias')
 
@@ -248,11 +267,17 @@ class VAE():
             dec_output_dim = self.decoder.get_output_dim()
 
             # Now add the weights/bias for the mean reconstruction terms
-            x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
+            if self.x_mean_weight_bias:
+                x_mean_weight_val = self.x_mean_weight_bias[0]
+                x_mean_bias_val = self.x_mean_weight_bias[1]
+            else:
+                x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
                 self.num_input_vals))
+                x_mean_bias_val = np.zeros((1,self.num_input_vals))
+
+
             x_mean_weight = tf.Variable(initial_value=x_mean_weight_val,
                     dtype=PRECISION, name='X_Mean_Weight')
-            x_mean_bias_val = np.zeros((1,self.num_input_vals))
             x_mean_bias = tf.Variable(initial_value=x_mean_bias_val,
                     dtype=PRECISION, name='X_Mean_Bias')
 

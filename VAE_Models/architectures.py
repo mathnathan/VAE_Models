@@ -32,7 +32,7 @@ class DNN(Neural_Network):
     """Deep Neural Network - Standard Multilayer Perceptron model (MLP)"""
 
 
-    def __init__(self, architecture, transfer_funcs):
+    def __init__(self, architecture, transfer_funcs,initial_weights=None,initial_biases= None,):
         Neural_Network.__init__(self, architecture)
 
         # The below is hardly error proof. It is just a few minor checks to help
@@ -51,6 +51,9 @@ class DNN(Neural_Network):
 
         self.transfer_funcs = transfer_funcs
 
+        self.initial_weights = initial_weights
+        self.initial_biases = initial_biases
+
 
     def build_graph(self, network_input, input_shape, scope='DNN'):
 
@@ -58,12 +61,23 @@ class DNN(Neural_Network):
             num_prev_nodes = np.prod(input_shape)
             # Currently I am not keeping track of the output between layers
             current_input = network_input
-            for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
-                init_weight_val = self.xavier_init((num_prev_nodes, num_next_nodes))
+            for (i,(func, num_next_nodes)) in enumerate(zip(self.transfer_funcs, self.architecture)):
+
+                if self.initial_weights:
+                    init_weight_val = self.initial_weights[i]
+                else:
+                    init_weight_val = self.xavier_init((num_prev_nodes, num_next_nodes))
+
+                if self.initial_biases:
+                    init_bias_val = self.initial_biases[i]
+                else:
+                    init_bias_val = np.zeros((1,num_next_nodes))
+
+
+                import pdb; pdb.set_trace()
                 weight = tf.Variable(initial_value=init_weight_val,
                         dtype=PRECISION, name='Weight')
                 self.weights.append(weight)
-                init_bias_val = np.zeros((1,num_next_nodes))
                 bias = tf.Variable(initial_value=init_bias_val,
                         dtype=PRECISION, name='Bias')
                 self.biases.append(bias)
