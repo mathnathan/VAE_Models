@@ -10,6 +10,9 @@ from tensorflow.contrib.tensorboard.plugins import projector
 from tensorflow.python import debug as tf_debug
 import os, sys
 
+
+from .tf_helper_funs import tf_huber
+
 DEBUG = 0
 PRECISION = tf.float64
 
@@ -359,7 +362,7 @@ class VAE():
 
                     first_term = tf.log(theta_tensor3)
                     second_term = -0.5*tf.log(2*np.pi*lambda_tensor3)
-                    third_term = -tf.square(z_t-u_tensor3)/(2*lambda_tensor3)
+                    third_term = -tf_huber(z_t-u_tensor3)/lambda_tensor3
 
 
                     p_z_c=tf.exp(tf.reduce_sum((first_term+second_term+third_term),axis=1))
