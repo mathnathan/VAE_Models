@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from IPython import embed
 import sys
+import pdb;
 
 PRECISION = tf.float64
 
@@ -74,7 +75,7 @@ class DNN(Neural_Network):
                     init_bias_val = np.zeros((1,num_next_nodes))
 
 
-                import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
                 weight = tf.Variable(initial_value=init_weight_val,
                         dtype=PRECISION, name='Weight')
                 self.weights.append(weight)

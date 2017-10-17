@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from tensorflow.contrib.tensorboard.plugins import projector
 from tensorflow.python import debug as tf_debug
 import os, sys
+import pdb
+
 
 DEBUG = 0
 PRECISION = tf.float64
@@ -32,7 +34,7 @@ class VAE():
 
 
     def __init__(self, input_shape, encoder, latent_dim, decoder, hyperParams,
-            initializers={},z_mean_weight_bias = None,x_mean_weight_bias = None, logdir=None):
+            initializers={},z_mean_weight_bias = None,z_log_var_weight_bias=None,x_mean_weight_bias = None, logdir=None):
 
         self.CHECKPOINT_COUNTER = 0
         self.CALL_COUNTER = 0
@@ -40,6 +42,7 @@ class VAE():
         self.input_dim = input_shape
         self.num_input_vals = np.prod(input_shape)
         self.z_mean_weight_bias = z_mean_weight_bias
+        self.z_log_var_weight_bias = z_log_var_weight_bias
         self.x_mean_weight_bias = x_mean_weight_bias
         self.encoder = encoder
         self.latent_dim = latent_dim
@@ -155,14 +158,14 @@ class VAE():
         if self.CALL_COUNTER % 100 == 0:
             self.sess.run(self.vae_train_op, feed_dict=input_dict)
             targets = (self.merged_summaries, self.cost, self.reconstruct_loss,
-                        self.regularizer, self.gmm_train_op)
-            summary, cost, reconstruct_loss, regularizer, _ = \
+                        self.regularizer)
+            summary, cost, reconstruct_loss, regularizer = \
                 self.sess.run(targets, feed_dict=input_dict)
             self.summary_writer.add_summary(summary, self.CALL_COUNTER)
         else:
             self.sess.run(self.vae_train_op, feed_dict=input_dict)
-            targets = (self.cost, self.reconstruct_loss, self.regularizer, self.gmm_train_op)
-            cost, reconstruct_loss, regularizer, _ = \
+            targets = (self.cost, self.reconstruct_loss, self.regularizer)
+            cost, reconstruct_loss, regularizer = \
                 self.sess.run(targets, feed_dict=input_dict)
 
         self.CALL_COUNTER += 1
@@ -220,6 +223,7 @@ class VAE():
             # load z_mean and z-var initalizers (currently one in the same because of keras implementation)
 
             if self.z_mean_weight_bias:
+                print("loading z_mean_pretrain...")
                 z_mean_weight_val = self.z_mean_weight_bias[0]
                 z_mean_bias_val = self.z_mean_weight_bias[1]
             else:
@@ -228,9 +232,10 @@ class VAE():
                 z_mean_bias_val = np.zeros((1,self.latent_dim))
 
 
-            if self.z_mean_weight_bias:
-                z_log_var_weight_val = self.z_mean_weight_bias[0]
-                z_log_var_bias_val = self.z_mean_weight_bias[1]
+            if self.z_log_var_weight_bias:
+                print("loading z_log_var_pretrain... ")
+                z_log_var_weight_val = self.z_log_var_weight_bias[0]
+                z_log_var_bias_val = self.z_log_var_weight_bias[1]
             else:
                 z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
@@ -446,19 +451,13 @@ class VAE():
                 # Ensure modes are normalized
                 #self.normalize_pis_op = tf.assign(self.gmm_pi,self.gmm_pi/tf.reduce_sum(self.gmm_pi))
 
-                # Collect trainable weights
-                trainables = tf.trainable_variables()
-                gmm_trainables = [self.gmm_pi, self.gmm_mu, self.gmm_log_var]
-                vae_trainables = [t for t in trainables if t not in gmm_trainables]
 
                 # User specifies optimizer in the hyperParams argument to constructor
                 with tf.name_scope('Optimizer'):
-                    self.vae_opt = self.optimizer(self.learning_rate)
-                    self.vae_gradients = self.vae_opt.compute_gradients(self.cost, var_list=vae_trainables)
+                    print("training vade....")
+                    self.vae_opt = self.optimizer(0.002,epsilon=1e-4)
+                    self.vae_gradients = self.vae_opt.compute_gradients(self.cost, var_list=tf.trainable_variables())
                     self.vae_train_op = self.vae_opt.apply_gradients(self.vae_gradients, global_step=self.global_step)
-                    self.gmm_opt = self.optimizer(self.learning_rate)
-                    self.gmm_gradients = self.gmm_opt.compute_gradients(self.cost, var_list=gmm_trainables)
-                    self.gmm_train_op = self.gmm_opt.apply_gradients(self.gmm_gradients, global_step=self.global_step)
                     #for g in self.gradients:
                         #tf.summary.histogram(g[1].name+'_gradients', g[0])
 

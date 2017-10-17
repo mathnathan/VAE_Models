@@ -18,23 +18,42 @@ def cluster_acc(Y_pred, Y):
   return sum([w[i,j] for i,j in ind])*1.0/Y_pred.size,ind
 
 
-def load_weights_from_file(pretrain_path):
-    encoder_weight_names= ['encoder{}_W.npy'.format(i) for i in range(1,4)]
-    encoder_bias_names = ['encoder{}_b.npy'.format(i) for i in range(1,4)]
-    decoder_weight_names = ['decoder{}_W.npy'.format(i) for i in range(1,4)]
-    decoder_bias_names = ['decoder{}_b.npy'.format(i) for i in range(1,4)]
-    encoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_weight_names]
-    encoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_bias_names]
-    decoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_weight_names]
-    decoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_bias_names]
-    z_mean_weights = np.load(os.path.join(pretrain_path,'encoder4_W.npy')) 
-    z_mean_bias =  np.load(os.path.join(pretrain_path,'encoder4_b.npy')) 
-    x_mean_weights = np.load(os.path.join(pretrain_path,'decoder4_W.npy')) 
-    x_mean_bias = np.load(os.path.join(pretrain_path,'decoder4_b.npy')) 
+def load_weights_from_file(pretrain_path,mode=1):
+
+    if mode == 1:
+        encoder_weight_names= ['weight_0.npy','weight_2.npy','weight_4.npy']
+        encoder_bias_names = ['weight_1.npy','weight_3.npy','weight_5.npy']
+        decoder_weight_names = ['weight_10.npy','weight_12.npy','weight_14.npy']
+        decoder_bias_names = ['weight_11.npy','weight_13.npy','weight_15.npy']
+        encoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_weight_names]
+        encoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_bias_names]
+        decoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_weight_names]
+        decoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_bias_names]
+        z_mean_weights = np.load(os.path.join(pretrain_path,'weight_6.npy')) 
+        z_mean_bias =  np.load(os.path.join(pretrain_path,'weight_7.npy')) 
+        z_log_var_weights = np.load(os.path.join(pretrain_path,'weight_8.npy')) 
+        z_log_var_bias =  np.load(os.path.join(pretrain_path,'weight_9.npy')) 
+        x_mean_weights = np.load(os.path.join(pretrain_path,'weight_16.npy')) 
+        x_mean_bias = np.load(os.path.join(pretrain_path,'weight_17.npy')) 
 
 
-    return(encoder_weights,encoder_biases,decoder_weights,
-      decoder_biases,z_mean_weights,z_mean_bias,x_mean_weights,x_mean_bias)
+    else:
+        encoder_weight_names= ['encoder{}_W.npy'.format(i) for i in range(1,4)]
+        encoder_bias_names = ['encoder{}_b.npy'.format(i) for i in range(1,4)]
+        decoder_weight_names = ['decoder{}_W.npy'.format(i) for i in range(1,4)]
+        decoder_bias_names = ['decoder{}_b.npy'.format(i) for i in range(1,4)]
+        encoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_weight_names]
+        encoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in encoder_bias_names]
+        decoder_weights = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_weight_names]
+        decoder_biases = [np.load(os.path.join(pretrain_path,_)) for _ in decoder_bias_names]
+        z_mean_weights = np.load(os.path.join(pretrain_path,'encoder4_W.npy')) 
+        z_mean_bias =  np.load(os.path.join(pretrain_path,'encoder4_b.npy')) 
+        x_mean_weights = np.load(os.path.join(pretrain_path,'decoder4_W.npy')) 
+        x_mean_bias = np.load(os.path.join(pretrain_path,'decoder4_b.npy')) 
+
+
+    return(encoder_weights,encoder_biases,decoder_weights,decoder_biases, 
+      z_mean_weights,z_mean_bias,z_log_var_weights,z_log_var_bias,x_mean_weights,x_mean_bias) #4,5,6,7,8,9
 
 
 
@@ -47,6 +66,7 @@ init = init_types[2]
 from VAE_Models.VAE import VAE as model
 from VAE_Models.architectures import DNN
 from tensorflow.examples.tutorials.mnist import input_data
+import pdb
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 datasets = [mnist.train, mnist.test, mnist.validation]
 dataset_size = sum([ds.num_examples for ds in datasets])
@@ -55,14 +75,16 @@ dataset_probs = [ds.num_examples/dataset_size for ds in datasets]
 tf.set_random_seed(12345)
 np.random.seed(12345)
 
-PRETRAIN_PATH = "pretrain_params/"
+PRETRAIN_PATH = "Vade_pretrain_weight"
 weights_biases = load_weights_from_file(PRETRAIN_PATH)
+print(len(weights_biases))
+
 
 FILENAME = 'exps/mnist_vade1/exp'
 input_dim = (28,28)
-encoder = DNN([500,500,2000], tf.nn.relu,initial_weights = weights_biases[0],initial_biases =weights_biases[1] )
+encoder = DNN([500,500,2000], tf.nn.relu,initial_weights = None,initial_biases =None )
 latency_dim = 10
-decoder = DNN([2000,500,500], tf.nn.relu,initial_weights = weights_biases[2],initial_biases = weights_biases[3])
+decoder = DNN([2000,500,500], tf.nn.relu,initial_weights = None,initial_biases = None)
 
 hyperParams = {'reconstruct_cost': 'bernoulli',
                'learning_rate': 0.002,
@@ -88,12 +110,13 @@ elif init == 'approx_vade':
     #initializers['gmm_pi'] = np.load('pretrain_params/theta_p.npy')
     num_clusts = hyperParams['num_clusters']
     initializers['gmm_pi'] = np.ones(num_clusts)/num_clusts
-    initializers['gmm_mu'] = np.load('pretrain_params/mu.npy').T
-    initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda.npy').T)
+    initializers['gmm_mu'] = np.load('pretrain_params/mu.npy')
+    initializers['gmm_log_var'] = np.log(np.load('pretrain_params/lambda.npy'))
     VaDE = model(input_dim, encoder, latency_dim, decoder,
             hyperParams, initializers,
-            z_mean_weight_bias = [weights_biases[4],weights_biases[5]],
-            x_mean_weight_bias = [weights_biases[6],weights_biases[7]], 
+            z_mean_weight_bias = weights_biases[4:6],
+            z_log_var_weight_bias = weights_biases[6:8],
+            x_mean_weight_bias = weights_biases[8:10], 
             logdir='vade_logs')
 elif init == 'perfect':
     initializers = {}
