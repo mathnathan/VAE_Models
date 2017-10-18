@@ -536,7 +536,6 @@ class VAE():
 
 
     def predict_clusters(self, input_x):
-
         input_dict = {self.network_input: input_x}
         targets = (self.gamma) # Probability of each cluster given x. aka responsibility
         predictions = self.sess.run(targets, feed_dict=input_dict)

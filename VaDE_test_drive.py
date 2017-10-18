@@ -72,8 +72,6 @@ datasets = [mnist.train, mnist.test, mnist.validation]
 dataset_size = sum([ds.num_examples for ds in datasets])
 dataset_probs = [ds.num_examples/dataset_size for ds in datasets]
 
-tf.set_random_seed(12345)
-np.random.seed(12345)
 
 PRETRAIN_PATH = "Vade_pretrain_weight"
 weights_biases = load_weights_from_file(PRETRAIN_PATH)
@@ -145,12 +143,26 @@ else:
         ds = np.random.choice(datasets, p=dataset_probs)
         data, labels = ds.next_batch(hyperParams['batch_size'])
         if itr % itrs_per_epoch == 0:
+            #pdb.set_trace()
+            accs = []
+            for i in range(0,550-1):
+              ds_t = datasets[0]
+              enumerate_labels = np.where(ds_t.labels[i*100:100*(i+1),:])[1]
+              input_d = ds_t.images[i*100:100*(i+1),:]
+              if not input_d.shape[0] == 100:
+                pdb.set_trace()
+              preds = VaDE.predict_clusters(input_d)
+              acc = cluster_acc(np.argmax(preds,axis=1),enumerate_labels)
+              accs.append(acc[0])
+            print("Accuracy: ", np.mean(accs))
 
-            enumerate_labels = np.where(labels)[1]
             preds = VaDE.predict_clusters(data)
-            acc = cluster_acc(np.argmax(preds,axis=1), enumerate_labels)
-            print("Accuracy: ", acc[0])
+            acc = cluster_acc(np.argmax(preds,axis=1),np.where(labels)[1])
+            print("Accuracy_batch: ",acc[0])
+
         tot_cost, reconstr_loss, KL_loss = VaDE(data)
+        if itr % itrs_per_epoch == 0:
+          print("cost : {}".format(tot_cost),end=" ")
     VaDE.save(FILENAME)
 
 validation_data, validation_labels = mnist.validation.next_batch(1000)
