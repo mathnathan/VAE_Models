@@ -27,6 +27,7 @@ def variable_summaries(var):
     tf.summary.scalar('min', tf.reduce_min(var))
     tf.summary.histogram('histogram', var)
 
+
 class VAE():
 
 
@@ -37,7 +38,7 @@ class VAE():
         self.CALL_COUNTER = 0
         self.DTYPE = dtype
         self.PI = tf.constant(np.pi, dtype=self.DTYPE)
-        self.input_dim = input_shape
+        self.input_shape = input_shape
         self.num_input_vals = np.prod(input_shape)
         self.encoder = encoder
         self.latent_dim = latent_dim
@@ -69,6 +70,10 @@ class VAE():
         dirs = os.listdir(self.LOG_DIR)
         run_num = sum([1 for name in dirs if exp_name in name])
         self.RUN_DIR = os.path.join(self.LOG_DIR,exp_name+'_'+str(run_num))
+        # New Beholder tools for tensorboard. Made available in tb-nightly pip package
+        from beholder.beholder import Beholder
+        self.beholder_writer = Beholder(session=self.sess,
+                                logdir=self.RUN_DIR)
         self.summary_writer = tf.summary.FileWriter(self.RUN_DIR, graph=self.sess.graph)
         self.merged_summaries = tf.summary.merge_all()
 
@@ -153,6 +158,7 @@ class VAE():
             summary, cost, reconstruct_loss, regularizer, _ = \
                 self.sess.run(targets, feed_dict=input_dict)
             self.summary_writer.add_summary(summary, self.CALL_COUNTER)
+            self.beholder_writer.update()
         else:
             targets = (self.cost, self.reconstruct_loss, self.regularizer, self.vae_train_op)
             cost, reconstruct_loss, regularizer, _ = \
@@ -203,10 +209,8 @@ class VAE():
 
 
             # Construct the encoder network and get its output
-            encoder_output = self.encoder.build_graph(self.network_input,
-                    self.input_dim, self.DTYPE, scope='Encoder')
-            #enc_output_dim = encoder_output.shape.as_list()[1]
-            enc_output_dim = self.encoder.get_output_dim()
+            encoder_output = self.encoder._build_graph(self.network_input, self.input_shape, self.DTYPE, scope='Encoder')
+            enc_output_dim = self.encoder.get_output_shape()
 
             # Now add the weights/bias for the mean and var of the latency dim
             z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
@@ -236,10 +240,9 @@ class VAE():
             self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps if self.variational else self.z_mean
 
             # Construct the decoder network and get its output
-            decoder_output = self.decoder.build_graph(self.z, self.latent_dim,
-                    self.DTYPE, scope='Decoder')
-            #dec_output_dim = decoder_output.shape.as_list()[1]
-            dec_output_dim = self.decoder.get_output_dim()
+            decoder_output = self.decoder._build_graph(self.z, self.latent_dim, self.DTYPE, scope='Decoder')
+            dec_output_shape = self.decoder.get_output_shape()
+            dec_output_dim = np.prod(dec_output_shape[1:])
 
             # Now add the weights/bias for the mean reconstruction terms
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
@@ -521,7 +524,7 @@ class VAE():
 
 
     def get(self, obj):
-        rand_input = tf.random_normal((self.batch_size, self.input_dim),0,1)
+        rand_input = tf.random_normal((self.batch_size, self.input_shape),0,1)
         input_dict = {self.network_input: rand_input}
         return self.sess.run(obj, input_dict)
 

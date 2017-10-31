@@ -8,7 +8,7 @@ import sys
 # Choose standard VAE or VaDE
 #from VAE_Models.VaDE import VaDE as model
 from VAE_Models.VAE import VAE as model
-from VAE_Models.architectures import CNN, DNN
+from VAE_Models.architectures import CNN, DNN, UPCNN
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 
@@ -24,26 +24,28 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # architectures to plug in as the encoder and decoder. The glueing together
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
-batch_size = 100
-input_shape = (28,28,1)
-cnn_arch = {'channels': [8,12], 'filterSizes': [(3,3),(5,5)], 'padding':'VALID',
-        'strides':[(1,2,2,1)]*2, 'fc_layer_size': 256}
+cnn_arch = {'channels': [16,16], 'filter_sizes': [(3,3),(3,3)],
+        'strides':[(1,1,1,1),(1,1,1,1)], 'fc_layer_size': 256}
 encoder = CNN(cnn_arch)
-#encoder = DNN([512,512,256], tf.nn.elu)
 latency_dim = 10
-decoder = DNN([512], tf.nn.elu)
+upcnn_arch = {'filter_sizes': [(1,1),(1,1)], 'channels': [4,4],
+            'initial_shape': [7,7,1], 'reshapes':[(14,14,1),(28,28,1)]}
+#decoder = DNN([256,512,512], tf.nn.elu)
+decoder = UPCNN(upcnn_arch)
+batch_size = 100
 hyperParams = {'reconstruct_cost': 'bernoulli',
-               'learning_rate': 1e-4,
+               'learning_rate': 1e-3,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': batch_size,
                'variational': True,
                'prior': 'gaussian'}
 
 
+input_shape = (28,28,1)
 network = model(input_shape, encoder, latency_dim, decoder, hyperParams, dtype=tf.float32)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
-epochs = 10
+epochs = 100
 
 test_data, test_labels = mnist.train.next_batch(hyperParams['batch_size'])
 print("\nAbout to begin training loop")
@@ -52,7 +54,7 @@ for itr in tqdm(range(epochs*itrs_per_epoch)):
     tot_cost, reconstr_loss, KL_loss = network(train_data)
 
 test_data, test_labels = mnist.test.next_batch(batch_size)
-network.create_embedding(test_data, (28,28), np.where(test_labels)[1])
+#network.create_embedding(test_data, (28,28), np.where(test_labels)[1])
 
 reconstructions = network.reconstruct(test_data)
 fig = plt.figure()
