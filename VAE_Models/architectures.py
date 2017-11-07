@@ -22,7 +22,9 @@ class Neural_Network():
     def xavier_init(self, shape):
         with tf.name_scope('Xavier_Init'):
             input_size = shape[0] if len(shape) == 2 else np.prod(shape[:-1])
+            print("input_size = ", input_size)
             output_size = shape[1] if len(shape) == 2 else shape[-1]
+            print("output_size = ", output_size)
             size = np.sqrt(6.0/(input_size + output_size))
             return tf.random_uniform(shape, minval=-size,
                                      maxval=size,
@@ -58,10 +60,12 @@ class DNN(Neural_Network):
         self.input_shape = input_shape
         with tf.name_scope(scope):
             self.dtype = dtype
-            num_prev_nodes = self.input_shape
+            num_prev_nodes = self.input_shape if type(self.input_shape) == int else np.prod(self.input_shape[:-1])
             # Currently I am not keeping track of the output between layers
             current_input = network_input
             for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
+                print("num_prev_nodes = ", num_prev_nodes)
+                print("num_next_nodes = ", num_next_nodes)
                 init_weight_val = self.xavier_init((num_prev_nodes, num_next_nodes))
                 weight = tf.Variable(initial_value=init_weight_val,
                         dtype=self.dtype, name='Weight')
@@ -79,7 +83,7 @@ class DNN(Neural_Network):
     def get_output_shape(self):
 
         output_layer = self.architecture[-1]
-        return [-1,output_layer]
+        return output_layer
 
 
 class CNN(Neural_Network):

@@ -216,10 +216,12 @@ class VAE():
 
 
             # Construct the encoder network and get its output
+            print("self.input_shape", self.input_shape)
             encoder_output = self.encoder._build_graph(self.network_input, self.input_shape, self.DTYPE, scope='Encoder')
             enc_output_dim = self.encoder.get_output_shape()
 
             # Now add the weights/bias for the mean and var of the latency dim
+            print("enc_output_dim = ", enc_output_dim)
             z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
             z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
@@ -249,7 +251,7 @@ class VAE():
             # Construct the decoder network and get its output
             decoder_output = self.decoder._build_graph(self.z, self.latent_dim, self.DTYPE, scope='Decoder')
             dec_output_shape = self.decoder.get_output_shape()
-            dec_output_dim = np.prod(dec_output_shape[1:])
+            dec_output_dim = dec_output_shape if type(dec_output_shape) == int else np.prod(dec_output_shape[1:])
 
             # Now add the weights/bias for the mean reconstruction terms
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
