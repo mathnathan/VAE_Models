@@ -218,6 +218,8 @@ class VAE():
             # Construct the encoder network and get its output
             print("self.input_shape", self.input_shape)
             encoder_output = self.encoder._build_graph(self.network_input, self.input_shape, self.DTYPE, scope='Encoder')
+            # We expecet enc_output_dim to be an integer. All architectures
+            # should follow this protocol
             enc_output_dim = self.encoder.get_output_shape()
 
             # Now add the weights/bias for the mean and var of the latency dim
@@ -245,13 +247,14 @@ class VAE():
                     z_log_var_bias, name='z_log_var')
 
             z_shape = tf.shape(self.z_log_var)
-            eps = tf.random_normal(z_shape, 0, 1, dtype=self.DTYPE)
+            eps = tf.truncated_normal(z_shape, 0, 1, dtype=self.DTYPE)
             self.z = self.z_mean + tf.sqrt(tf.exp(self.z_log_var)) * eps if self.variational else self.z_mean
 
             # Construct the decoder network and get its output
             decoder_output = self.decoder._build_graph(self.z, self.latent_dim, self.DTYPE, scope='Decoder')
-            dec_output_shape = self.decoder.get_output_shape()
-            dec_output_dim = dec_output_shape if type(dec_output_shape) == int else np.prod(dec_output_shape[1:])
+            # We expecet dec_output_dim to also be an integer. All architectures
+            # should follow this protocol
+            dec_output_dim = self.decoder.get_output_shape()
 
             # Now add the weights/bias for the mean reconstruction terms
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
@@ -273,7 +276,7 @@ class VAE():
                 x_sigma_weight_val = self.encoder.xavier_init((dec_output_dim,
                     self.num_input_vals))
                 x_sigma_weight = tf.Variable(initial_value=x_sigma_weight_val, dtype=self.DTYPE)
-                x_sigma_bias_val = np.zeros(self.num_input_vals)
+                x_sigma_bias_val = np.zeros((1,self.num_input_vals))
                 x_sigma_bias = tf.Variable(initial_value=x_mean_bias_val, dtype=self.DTYPE)
                 self.x_sigma = tf.nn.sigmoid(decoder_output @ x_sigma_weight +
                         x_sigma_bias)
@@ -291,10 +294,8 @@ class VAE():
                                     self.x_mean)),1))
                 elif self.reconstruct_cost == "gaussian":
                     with tf.name_scope('Gaussian_Reconstruction'):
-                        if self.variational:
-                            self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_output-self.x_mean))
-                        else:
-                            self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_output-self.x_mean))
+                        self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_output-self.x_mean))
+
                 tf.summary.scalar('Reconstruction_Error', self.reconstruct_loss)
 
                 with tf.name_scope('KL_Error'):

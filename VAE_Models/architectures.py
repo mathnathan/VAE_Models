@@ -57,10 +57,9 @@ class DNN(Neural_Network):
 
     def _build_graph(self, network_input, input_shape, dtype=tf.float32, scope='DNN'):
 
-        self.input_shape = input_shape
         with tf.name_scope(scope):
             self.dtype = dtype
-            num_prev_nodes = self.input_shape if type(self.input_shape) == int else np.prod(self.input_shape[:-1])
+            num_prev_nodes = input_shape if isinstance(input_shape, int) else np.prod(input_shape[:-1])
             # Currently I am not keeping track of the output between layers
             current_input = network_input
             for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
@@ -204,6 +203,7 @@ class UPCNN(Neural_Network):
             self.reshapes.append([-1,rh,rw,rc])
 
         self.output_shape = self.reshapes[-1]
+        self.final_output_shape = self.output_shape[1]*self.output_shape[2]
 
         self.up_convolution_counter = 1
 
@@ -283,7 +283,7 @@ class UPCNN(Neural_Network):
                 print("current_input.shape = ", current_input.shape)
                 prev_r = r[1:]
 
-        final_output = tf.reshape(current_input, [-1,self.output_shape[1]*self.output_shape[2]])
+        final_output = tf.reshape(current_input, [-1,self.final_output_shape])
 
         return final_output
 
@@ -302,7 +302,8 @@ class UPCNN(Neural_Network):
 
     def get_output_shape(self):
 
-        return self.output_shape
+        return self.final_output_shape
+
 
 class CNN3D(Neural_Network):
 
