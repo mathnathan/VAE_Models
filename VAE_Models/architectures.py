@@ -4,6 +4,8 @@ import tensorflow as tf
 from IPython import embed
 import sys
 
+# TODO: Add replace tf.Variable with tf.get_variable
+
 
 class Neural_Network():
     """Base class for various neural networks (consider using
@@ -202,20 +204,21 @@ class UPCNN(Neural_Network):
         self.up_convolution_counter = 1
 
 
-    def add_layer(self, layer_input, filter_sz, channels, output_shape):
+    def add_layer(self, layer_input, filter_sz, channels, input_shape, output_shape):
         uc = self.up_convolution_counter # Which convolution is this?
+        ih, iw, in_channels = input_shape
         _, oh, ow, oc = output_shape
         with tf.name_scope("Up_Convolution_%d" % (uc)):
-            convWeightshape = [filter_sz[0], filter_sz[1], 1, channels]
+            convWeightshape = [filter_sz[0], filter_sz[1], in_channels, channels]
             convWeights = tf.Variable(self.xavier_init(convWeightshape), dtype=self.dtype,
                     name='up_conv_weights%d' % (uc))
-            bias = tf.Variable(tf.zeros((oh//2, ow//2, oc), dtype=self.dtype),
-                    name='bias%d' % (uc))
+            print('input_shape = ', input_shape)
+            bias = tf.Variable(tf.zeros([ih, iw, channels], dtype=self.dtype), name='bias%d' % (uc))
 
+            print("bias.shape = ", bias.shape)
             print("layer_input.shape = ", layer_input.shape)
             print("convWeights.shape = ", convWeights.shape)
 
-            # Convolutional Layer #1
             conv = tf.nn.conv2d(layer_input, convWeights,
                                 strides=[1,1,1,1],
                                 padding='SAME',
@@ -237,29 +240,44 @@ class UPCNN(Neural_Network):
         self.dtype = dtype
         # input in unwrapped format. Must reshape for convolution
 
-        init_reshape_weights = tf.Variable(self.xavier_init([input_shape, ph, pw, pc]),
+        init_reshape_weights = tf.Variable(self.xavier_init((input_shape,np.prod([ph, pw, pc]))),
                 dtype=self.dtype, name='init_reshape_weights')
-        init_reshape_bias = tf.Variable(tf.zeros([ph, pw, pc], dtype=self.dtype),
+        init_reshape_bias = tf.Variable(tf.zeros(np.prod([ph, pw, pc]), dtype=self.dtype),
                 name='init_reshape_bias')
 
         print("network_input.shape = ", network_input.shape)
         print("init_reshape_weights.shape = ", init_reshape_weights.shape)
-        current_input = tf.nn.relu(tf.add(tf.tensordot(network_input, init_reshape_weights,
-            [[1], [0]]), init_reshape_bias), name='init_reshape')
+        tmp_current_input = tf.nn.relu(tf.add(tf.matmul(network_input, init_reshape_weights), init_reshape_bias),
+                name='init_reshape')
+
+        current_input = tf.reshape(tmp_current_input, (-1, ph, pw, pc))
+
+        #init_reshape_weights = tf.Variable(self.xavier_init([input_shape, ph, pw, pc]),
+                #dtype=self.dtype, name='init_reshape_weights')
+        #init_reshape_bias = tf.Variable(tf.zeros([ph, pw, pc], dtype=self.dtype),
+                #name='init_reshape_bias')
+
+        #print("network_input.shape = ", network_input.shape)
+        #print("init_reshape_weights.shape = ", init_reshape_weights.shape)
+        #current_input = tf.nn.relu(tf.add(tf.tensordot(network_input, init_reshape_weights,
+            #[[1], [0]]), init_reshape_bias), name='init_reshape')
+
 
 
         print("Up-Convolution")
         print("input_shape = ", input_shape)
         print("network_input.shape = ", network_input.shape)
         print("current_input.shape = ", current_input.shape)
+        prev_r = [ph, pw, pc]
         with tf.name_scope(scope):
             for f,c,r in zip(self.filter_sizes, self.channels, self.reshapes):
                 print("---------")
                 print("filter = ", f)
                 print("channels = ", c)
                 print("reshape = ", r)
-                current_input = self.add_layer(current_input, f, c, r)
+                current_input = self.add_layer(current_input, f, c, prev_r, r)
                 print("current_input.shape = ", current_input.shape)
+                prev_r = r[1:]
 
         final_output = tf.reshape(current_input, [-1,self.output_shape[1]*self.output_shape[2]])
 

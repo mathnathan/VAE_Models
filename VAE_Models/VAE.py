@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 from tensorflow.contrib.tensorboard.plugins import projector
 from tensorflow.python import debug as tf_debug
 import os, sys
+# Use a local build of tensorboard
+FILE_LOC = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(1,os.path.join(FILE_LOC, '../tensorboard/'))
 
 DEBUG = 0
 
@@ -39,7 +42,7 @@ class VAE():
         self.DTYPE = dtype
         self.PI = tf.constant(np.pi, dtype=self.DTYPE)
         self.input_shape = input_shape
-        self.num_input_vals = np.prod(input_shape)
+        self.num_input_vals = np.prod(input_shape[:-1])
         self.encoder = encoder
         self.latent_dim = latent_dim
         self.decoder = decoder
@@ -65,15 +68,13 @@ class VAE():
             logdir = os.path.join(os.getcwd(), 'logs')
         self.LOG_DIR = logdir
 
-        string_mods = (self.starter_learning_rate, self.batch_size)
-        exp_name = 'lr=%0.1E_bs=%d' % string_mods
+        string_mods = (self.starter_learning_rate, self.batch_size, self.alpha)
+        exp_name = 'lr=%0.1E_bs=%d_a=%0.2f' % string_mods
         dirs = os.listdir(self.LOG_DIR)
         run_num = sum([1 for name in dirs if exp_name in name])
         self.RUN_DIR = os.path.join(self.LOG_DIR,exp_name+'_'+str(run_num))
-        # New Beholder tools for tensorboard. Made available in tb-nightly pip package
-        from beholder.beholder import Beholder
-        self.beholder_writer = Beholder(session=self.sess,
-                                logdir=self.RUN_DIR)
+        #from tensorboard.plugins.beholder.beholder import Beholder
+        #self.beholder_writer = Beholder(session=self.sess, logdir=self.RUN_DIR)
         self.summary_writer = tf.summary.FileWriter(self.RUN_DIR, graph=self.sess.graph)
         self.merged_summaries = tf.summary.merge_all()
 
@@ -140,17 +141,22 @@ class VAE():
                                                         self.decay_rate)
 
 
-    def __call__(self, network_input):
+    def __call__(self, network_input, label=None):
         """ Over load the parenthesis operator to act as a oneshot call for
             passing data through the network and updating with the optimizer
 
             network_input - (array) Input to the network. Typically of shape
             (batch_size, input_dimensions)
 
+            label - (array) Output of the network. This is used for predictive
+            encoding. Typically of shape (batch_size, input_dimensions)
+
             returns - (total cost, reconstruction loss, KL loss)
         """
 
-        input_dict = {self.network_input: network_input}
+        if label is None:
+            label = network_input.copy()
+        input_dict = {self.network_input: network_input, self.network_output: label}
         # Log variables every 10 iterations
         if self.CALL_COUNTER % 10 == 0:
             targets = (self.merged_summaries, self.cost, self.reconstruct_loss,
@@ -158,7 +164,7 @@ class VAE():
             summary, cost, reconstruct_loss, regularizer, _ = \
                 self.sess.run(targets, feed_dict=input_dict)
             self.summary_writer.add_summary(summary, self.CALL_COUNTER)
-            self.beholder_writer.update()
+            #self.beholder_writer.update()
         else:
             targets = (self.cost, self.reconstruct_loss, self.regularizer, self.vae_train_op)
             cost, reconstruct_loss, regularizer, _ = \
@@ -173,6 +179,7 @@ class VAE():
 
         print("\nBuilding VAE")
         self.network_input = tf.placeholder(self.DTYPE, name='Input')
+        self.network_output = tf.placeholder(self.DTYPE, name='Output')
 
         with tf.name_scope('VAE'):
 
@@ -277,15 +284,15 @@ class VAE():
                 if self.reconstruct_cost == "bernoulli":
                     with tf.name_scope('Bernoulli_Reconstruction'):
                         self.reconstruct_loss = tf.reduce_mean(tf.reduce_sum(
-                                self.network_input * tf.log(1e-10 + self.x_mean) +
-                                (1-self.network_input) * tf.log(1e-10 + (1 -
+                                self.network_output * tf.log(1e-10 + self.x_mean) +
+                                (1-self.network_output) * tf.log(1e-10 + (1 -
                                     self.x_mean)),1))
                 elif self.reconstruct_cost == "gaussian":
                     with tf.name_scope('Gaussian_Reconstruction'):
                         if self.variational:
-                            self.reconstruct_loss = tf.reduce_mean(tf.square(self.network_input-self.x_mean))
+                            self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_output-self.x_mean))
                         else:
-                            self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_input-self.x_mean))
+                            self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_output-self.x_mean))
                 tf.summary.scalar('Reconstruction_Error', self.reconstruct_loss)
 
                 with tf.name_scope('KL_Error'):
@@ -527,6 +534,7 @@ class VAE():
         rand_input = tf.random_normal((self.batch_size, self.input_shape),0,1)
         input_dict = {self.network_input: rand_input}
         return self.sess.run(obj, input_dict)
+
 
     def create_embedding(self, batch, img_shape, labels=None, invert_colors=True):
         """ This will eventually be called inside some convenient training
