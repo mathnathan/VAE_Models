@@ -259,6 +259,8 @@ class VAE():
             # Now add the weights/bias for the mean reconstruction terms
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
                 self.num_input_vals))
+            print('dec_output_dim = ', dec_output_dim)
+            print('num_input_vals = ', self.num_input_vals)
             x_mean_weight = tf.Variable(initial_value=x_mean_weight_val,
                     dtype=self.DTYPE, name='X_Mean_Weight')
             x_mean_bias_val = np.zeros((1,self.num_input_vals))
@@ -271,7 +273,7 @@ class VAE():
                 self.x_mean = tf.nn.sigmoid(tmp_add, name='x_mean')
                 #self.x_mean = tf.nn.sigmoid(decoder_output @ x_mean_weight + x_mean_bias)
             elif self.reconstruct_cost == 'gaussian':
-                self.x_mean = tf.nn.sigmoid(decoder_output @ x_mean_weight + x_mean_bias)
+                self.x_mean = tf.nn.tanh(decoder_output @ x_mean_weight + x_mean_bias)
                 # Now add the weights/bias for the sigma reconstruction term
                 x_sigma_weight_val = self.encoder.xavier_init((dec_output_dim,
                     self.num_input_vals))

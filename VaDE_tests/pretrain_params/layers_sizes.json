@@ -1,0 +1,1 @@
+{"decoder1_W": [10, 2000], "decoder1_b": [2000], "decoder2_W": [2000, 500], "decoder2_b": [500], "decoder3_W": [500, 500], "decoder3_b": [500], "decoder4_W": [500, 784], "decoder4_b": [784], "encoder1_W": [784, 500], "encoder1_b": [500], "encoder2_W": [500, 500], "encoder2_b": [500], "encoder3_W": [500, 2000], "encoder3_b": [2000], "encoder4_W": [2000, 10], "encoder4_b": [10]}
