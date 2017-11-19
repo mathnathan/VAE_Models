@@ -67,7 +67,9 @@ class VAE():
         if logdir is None:
             logdir = os.path.join(os.getcwd(), 'logs')
         self.LOG_DIR = logdir
-
+        # Creates the logs folder if it doesn't exist
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
         string_mods = (self.starter_learning_rate, self.batch_size, self.alpha)
         exp_name = 'lr=%0.1E_bs=%d_a=%0.2f' % string_mods
         dirs = os.listdir(self.LOG_DIR)
@@ -216,14 +218,14 @@ class VAE():
 
 
             # Construct the encoder network and get its output
-            print("self.input_shape", self.input_shape)
+            #print("self.input_shape", self.input_shape)
             encoder_output = self.encoder._build_graph(self.network_input, self.input_shape, self.DTYPE, scope='Encoder')
             # We expecet enc_output_dim to be an integer. All architectures
             # should follow this protocol
             enc_output_dim = self.encoder.get_output_shape()
 
             # Now add the weights/bias for the mean and var of the latency dim
-            print("enc_output_dim = ", enc_output_dim)
+            #print("enc_output_dim = ", enc_output_dim)
             z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
             z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
@@ -259,8 +261,8 @@ class VAE():
             # Now add the weights/bias for the mean reconstruction terms
             x_mean_weight_val = self.decoder.xavier_init((dec_output_dim,
                 self.num_input_vals))
-            print('dec_output_dim = ', dec_output_dim)
-            print('num_input_vals = ', self.num_input_vals)
+            # print('dec_output_dim = ', dec_output_dim)
+            # print('num_input_vals = ', self.num_input_vals)
             x_mean_weight = tf.Variable(initial_value=x_mean_weight_val,
                     dtype=self.DTYPE, name='X_Mean_Weight')
             x_mean_bias_val = np.zeros((1,self.num_input_vals))
