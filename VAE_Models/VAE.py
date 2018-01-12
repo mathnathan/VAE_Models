@@ -519,7 +519,7 @@ class VAE():
 
     def get_latent_weights(self):
 
-        mean, var = self.session.run((self.z_mean_weights, self.z_log_var_weights))
+        mean, var = self.sess.run((self.z_mean_weights, self.z_log_var_weights))
         return (mean, var)
 
 
