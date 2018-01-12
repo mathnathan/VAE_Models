@@ -228,24 +228,24 @@ class VAE():
             #print("enc_output_dim = ", enc_output_dim)
             z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
-            z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
+            self.z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
                     dtype=self.DTYPE, name='Z_Mean_Weight')
             z_mean_bias_val = np.zeros((1,self.latent_dim))
             z_mean_bias = tf.Variable(initial_value=z_mean_bias_val,
                     dtype=self.DTYPE, name='Z_Mean_Bias')
 
-            self.z_mean = tf.add(encoder_output @ z_mean_weight, z_mean_bias,
+            self.z_mean = tf.add(encoder_output @ self.z_mean_weight, z_mean_bias,
                     name='z_mean')
 
             z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
-            z_log_var_weight = tf.Variable(initial_value=z_log_var_weight_val,
+            self.z_log_var_weights = tf.Variable(initial_value=z_log_var_weight_val,
                     dtype=self.DTYPE, name='Z_Log_Var_Weight')
             z_log_var_bias_val = np.zeros((1,self.latent_dim))
             z_log_var_bias = tf.Variable(initial_value=z_log_var_bias_val,
                     dtype=self.DTYPE, name='Z_Log_Var_Bias')
 
-            self.z_log_var = tf.add(encoder_output @ z_log_var_weight,
+            self.z_log_var = tf.add(encoder_output @ self.z_log_var_weights,
                     z_log_var_bias, name='z_log_var')
 
             z_shape = tf.shape(self.z_log_var)
@@ -516,6 +516,10 @@ class VAE():
         with tf.name_scope('Load'):
             if os.path.isfile(filename):
                 self.saver.restore(self.sess, filename)
+
+    def get_latent_weights(self):
+
+        return (self.z_mean_weights, self.z_log_var_weights)
 
 
     def get_gmm_params(self):
