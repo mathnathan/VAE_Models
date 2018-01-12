@@ -81,6 +81,10 @@ class VAE():
         self.merged_summaries = tf.summary.merge_all()
 
 
+    def __del__(self):
+        self.sess.close()
+
+
     def __parse_hyperParams(self, hyperParams):
 
         try:
