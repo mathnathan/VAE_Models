@@ -41,6 +41,7 @@ class VAE():
         self.CALL_COUNTER = 0
         self.DTYPE = dtype
         self.PI = tf.constant(np.pi, dtype=self.DTYPE)
+        print('input_shape into network = ', input_shape)
         self.input_shape = input_shape
         self.num_input_vals = np.prod(input_shape[:-1])
         self.encoder = encoder
