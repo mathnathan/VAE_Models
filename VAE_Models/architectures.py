@@ -61,6 +61,7 @@ class DNN(Neural_Network):
 
         with tf.name_scope(scope):
             self.dtype = dtype
+            self.input_shape = input_shape
             num_prev_nodes = input_shape if isinstance(input_shape, int) else np.prod(input_shape[:-1])
             # Currently I am not keeping track of the output between layers
             current_input = network_input
@@ -83,8 +84,10 @@ class DNN(Neural_Network):
 
     def get_output_shape(self):
 
-        output_layer = self.architecture[-1]
-        return output_layer
+        if len(self.architecture) == 0:
+            return self.input_shape
+        else:
+            return self.architecture[-1]
 
 
 class CNN(Neural_Network):
