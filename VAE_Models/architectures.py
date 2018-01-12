@@ -35,12 +35,14 @@ class DNN(Neural_Network):
     """Deep Neural Network - Standard Multilayer Perceptron model (MLP)"""
 
 
-    def __init__(self, architecture, transfer_funcs):
+    def __init__(self, architecture, transfer_funcs=None):
         Neural_Network.__init__(self, architecture)
 
         # The below is hardly error proof. It is just a few minor checks to help
         # with debugging. Eventually it will need to be bolstered further (check
         # architecture too)
+        if transfer_funcs is None: # Default to Linear activation function
+            transfer_funcs = lambda x: x
         if hasattr(transfer_funcs, '__iter__'): # Check to see if it is iterable
             # If it is iterable that means they put in a list or tuple (hopefully)
             # in which case they must specify an actiavation func for each layer

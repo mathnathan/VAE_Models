@@ -28,18 +28,18 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 # architectures to plug in as the encoder and decoder. The glueing together
 # of the encoder and decoder is done inside of the VAE class. This will need
 # to be the case for any new vae architectures that we code up, i.e. VaDE.
-input_dim = (28,28)
-encoder = DNN([512,512,256], tf.nn.elu)
-latency_dim = 10
-decoder = DNN([256,512,512], tf.nn.elu)
-hyperParams = {'reconstruct_cost': 'bernoulli',
+input_dim = (28,28,1)
+encoder = DNN([512])
+latent_dim = 10
+decoder = DNN([512])
+hyperParams = {'reconstruct_cost': 'gaussian',
+               'variational': False,
+               'prior': 'gaussian',
                'learning_rate': 1e-3,
                'optimizer': tf.train.AdamOptimizer,
                'batch_size': 100}
-#               'alpha': 1.0,
-#               'num_clusters': 10}
 
-network = model(input_dim, encoder, latency_dim, decoder, hyperParams)
+network = model(input_dim, encoder, latent_dim, decoder, hyperParams)
 
 itrs_per_epoch = mnist.train.num_examples // hyperParams['batch_size']
 epochs = 10
