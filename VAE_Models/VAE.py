@@ -228,13 +228,13 @@ class VAE():
             #print("enc_output_dim = ", enc_output_dim)
             z_mean_weight_val = self.encoder.xavier_init((enc_output_dim,
                 self.latent_dim))
-            self.z_mean_weight = tf.Variable(initial_value=z_mean_weight_val,
+            self.z_mean_weights = tf.Variable(initial_value=z_mean_weight_val,
                     dtype=self.DTYPE, name='Z_Mean_Weight')
             z_mean_bias_val = np.zeros((1,self.latent_dim))
             z_mean_bias = tf.Variable(initial_value=z_mean_bias_val,
                     dtype=self.DTYPE, name='Z_Mean_Bias')
 
-            self.z_mean = tf.add(encoder_output @ self.z_mean_weight, z_mean_bias,
+            self.z_mean = tf.add(encoder_output @ self.z_mean_weights, z_mean_bias,
                     name='z_mean')
 
             z_log_var_weight_val = self.encoder.xavier_init((enc_output_dim,
