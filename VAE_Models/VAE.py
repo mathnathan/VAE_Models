@@ -81,7 +81,8 @@ class VAE():
         self.merged_summaries = tf.summary.merge_all()
 
 
-    def __del__(self):
+    def reset(self):
+        tf.reset_default_graph()
         self.sess.close()
 
 
