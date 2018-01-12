@@ -85,7 +85,7 @@ class DNN(Neural_Network):
     def get_output_shape(self):
 
         if len(self.architecture) == 0:
-            return self.input_shape
+            return self.input_shape[0]
         else:
             return self.architecture[-1]
 
