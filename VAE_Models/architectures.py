@@ -61,14 +61,14 @@ class DNN(Neural_Network):
 
         with tf.name_scope(scope):
             self.dtype = dtype
-            print('input_shape = ', input_shape)
-            self.input_shape = input_shape
+            if hasattr(input_shape, '__len__'):
+                self.input_shape = input_shape
+            else:
+                self.input_shape = (input_shape,1)
             num_prev_nodes = input_shape if isinstance(input_shape, int) else np.prod(input_shape[:-1])
             # Currently I am not keeping track of the output between layers
             current_input = network_input
             for func, num_next_nodes in zip(self.transfer_funcs, self.architecture):
-                print("num_prev_nodes = ", num_prev_nodes)
-                print("num_next_nodes = ", num_next_nodes)
                 init_weight_val = self.xavier_init((num_prev_nodes, num_next_nodes))
                 weight = tf.Variable(initial_value=init_weight_val,
                         dtype=self.dtype, name='Weight')
@@ -86,7 +86,6 @@ class DNN(Neural_Network):
     def get_output_shape(self):
 
         if len(self.architecture) == 0:
-            print('self.input_shape = ', self.input_shape)
             return self.input_shape[0]
         else:
             return self.architecture[-1]
@@ -146,19 +145,19 @@ class CNN(Neural_Network):
         self.dtype = dtype
         current_input = tf.reshape(network_input, (-1, ph, pw, c))
         pc = c
-        print("\nConvolution")
+        #print("\nConvolution")
         with tf.name_scope(scope):
             for f,c,s in zip(self.filter_sizes, self.channels, self.strides):
-                print("input_shape = ", input_shape)
-                print("filter = ", f)
-                print("channels = ", c)
-                print("strides = ", s)
+                #print("input_shape = ", input_shape)
+                #print("filter = ", f)
+                #print("channels = ", c)
+                #print("strides = ", s)
                 h = int(np.ceil(ph / s[1]))
                 w = int(np.ceil(pw / s[2]))
                 out_shape = (h, w, c)
-                print("output_shape = ", out_shape)
+                #print("output_shape = ", out_shape)
                 current_input = self.add_layer(current_input, out_shape, f, pc, c, s)
-                print("current_input.shape = ", current_input.shape)
+                #print("current_input.shape = ", current_input.shape)
                 pc = c # previous channels become the current output channels
                 ph = h
                 pw = w
@@ -166,7 +165,7 @@ class CNN(Neural_Network):
 
 
         num_pix = np.prod(out_shape)
-        print('num_pix = ', num_pix)
+        #print('num_pix = ', num_pix)
         current_input = tf.reshape(current_input, (-1, num_pix))
         fcWeights = tf.Variable(self.xavier_init([num_pix,
             self.fc_layer_size]), dtype=self.dtype,
@@ -222,19 +221,19 @@ class UPCNN(Neural_Network):
             convWeightshape = [filter_sz[0], filter_sz[1], in_channels, channels]
             convWeights = tf.Variable(self.xavier_init(convWeightshape), dtype=self.dtype,
                     name='up_conv_weights%d' % (uc))
-            print('input_shape = ', input_shape)
+            #print('input_shape = ', input_shape)
             bias = tf.Variable(tf.zeros([ih, iw, channels], dtype=self.dtype), name='bias%d' % (uc))
 
-            print("bias.shape = ", bias.shape)
-            print("layer_input.shape = ", layer_input.shape)
-            print("convWeights.shape = ", convWeights.shape)
+            #print("bias.shape = ", bias.shape)
+            #print("layer_input.shape = ", layer_input.shape)
+            #print("convWeights.shape = ", convWeights.shape)
 
             conv = tf.nn.conv2d(layer_input, convWeights,
                                 strides=[1,1,1,1],
                                 padding='SAME',
                                 name='up_conv%d' % (uc))
 
-            print("conv.shape = ", conv.shape)
+            #print("conv.shape = ", conv.shape)
 
             conv_output = tf.nn.relu(tf.add(conv, bias), name='up_conv%d_output' % (uc))
             conv_output = tf.reshape(conv_output, [-1,oh,ow,oc])
@@ -256,16 +255,16 @@ class UPCNN(Neural_Network):
         init_reshape_bias = tf.Variable(tf.zeros((1, tot_size), dtype=self.dtype),
                 name='init_reshape_bias')
 
-        print("\nUp-Convolution")
+        #print("\nUp-Convolution")
         self.print_network_details()
-        print("network_input.shape = ", network_input.shape)
-        print("input_shape = ", input_shape)
-        print("init_reshape_weights.shape = ", init_reshape_weights.shape)
+        #print("network_input.shape = ", network_input.shape)
+        #print("input_shape = ", input_shape)
+        #print("init_reshape_weights.shape = ", init_reshape_weights.shape)
         tmp_current_input = tf.nn.relu(tf.add(tf.matmul(network_input, init_reshape_weights), init_reshape_bias),
                 name='init_reshape')
 
         current_input = tf.reshape(tmp_current_input, (-1, ph, pw, pc))
-        print("current_input.shape = ", current_input.shape)
+        #print("current_input.shape = ", current_input.shape)
 
         #init_reshape_weights = tf.Variable(self.xavier_init([input_shape, ph, pw, pc]),
                 #dtype=self.dtype, name='init_reshape_weights')
@@ -282,12 +281,12 @@ class UPCNN(Neural_Network):
         prev_r = self.initial_shape
         with tf.name_scope(scope):
             for f,c,r in zip(self.filter_sizes, self.channels, self.reshapes):
-                print("---------")
-                print("filter = ", f)
-                print("channels = ", c)
-                print("reshape = ", r)
+                #print("---------")
+                #print("filter = ", f)
+                #print("channels = ", c)
+                #print("reshape = ", r)
                 current_input = self.add_layer(current_input, f, c, prev_r, r)
-                print("current_input.shape = ", current_input.shape)
+                #print("current_input.shape = ", current_input.shape)
                 prev_r = r
 
         final_output = tf.reshape(current_input, [-1,self.final_output_shape])
