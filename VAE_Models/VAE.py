@@ -147,6 +147,10 @@ class VAE():
                                                         self.decay_step,
                                                         self.decay_rate)
 
+        # This must be done to eliminate the influence of the regularizer in the cost function
+        if self.variational == False:
+            self.alpha = 0
+
 
     def __call__(self, network_input, label=None):
         """ Over load the parenthesis operator to act as a oneshot call for
