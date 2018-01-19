@@ -307,7 +307,8 @@ class VAE():
                                     self.x_mean)),1))
                 elif self.reconstruct_cost == "gaussian":
                     with tf.name_scope('Gaussian_Reconstruction'):
-                        self.reconstruct_loss = -tf.reduce_mean(tf.square(self.network_output-self.x_mean))
+                        tot_errors = -tf.reduce_sum(tf.square(self.network_output-self.x_mean), axis=1)
+                        self.reconstruct_loss = tf.reduce_mean(tot_errors)
 
                 tf.summary.scalar('Reconstruction_Error', self.reconstruct_loss)
 
